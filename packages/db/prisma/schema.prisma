@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id String @id @default(uuid())
+  email String @unique
+  password String
+  apiKeys ApiKey[]
+  credits Credit[]
+  conversations Conversation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApiKey {
+  id String @id @default(uuid())
+  key String @unique
+  name String
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Credit {
+  id String @id @default(uuid())
+  amount Int
+  description String?
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OnrampTransaction {
+  id String @id @default(uuid())
+  amount Int
+  currency String
+  status String
+  provider String
+  transactionHash String?
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Model {
+  id String @id @default(uuid())
+  name String @unique
+  companyId String
+  company Company @relation(fields: [companyId], references: [id])
+  modelProviderMappings ModelProviderMapping[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Provider {
+  id String @id @default(uuid())
+  name String @unique
+  website String
+  modelProviderMappings ModelProviderMapping[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id String @id @default(uuid())
+  name String @unique
+  website String
+  models Model[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ModelProviderMapping {
+  id String @id @default(uuid())
+  modelId String
+  providerId String
+  inputTokenCost Float
+  outputTokenCost Float
+  model Model @relation(fields: [modelId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+  conversations Conversation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Conversation {
+  id String @id @default(uuid())
+  conversationId String @unique
+  userId String
+  input String
+  output String
+  inputTokenCount Int
+  outputTokenCount Int
+  modelProviderMappingId String
+  user User @relation(fields: [userId], references: [id])
+  modelProviderMapping ModelProviderMapping @relation(fields: [modelProviderMappingId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
