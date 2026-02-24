@@ -1,5 +1,5 @@
 {
-  "name": "api_backend",
+  "name": "primary_backend",
   "module": "index.ts",
   "type": "module",
   "private": true,
