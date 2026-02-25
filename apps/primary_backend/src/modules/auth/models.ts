@@ -15,7 +15,8 @@ export namespace AuthModel {
     export type signinResponseSchema = typeof signinResponseSchema.static;
 
     export const signupSchema = t.Object({
-        id: t.String()
+        email: t.String(),
+        password: t.String(),
     })
 
     export type signupSchema = typeof signupSchema.static;
@@ -24,12 +25,12 @@ export namespace AuthModel {
         id: t.String(),
     })
 
-    export const signupFailedResponseSchema = t.Object({
+    export const signupFailureSchema = t.Object({
         message: t.Literal("Error while signing up")
     })
 
     export type signupResponseSchema = typeof signupResponseSchema.static;
 
-    export type signupFailedResponseSchema = typeof signupFailedResponseSchema.static;
+    export type signupFailureSchema = typeof signupFailureSchema.static;
 
-}
+} 
