@@ -6,6 +6,9 @@
     "dev": "bun run --watch src/index.ts"
   },
   "dependencies": {
+    "@elysiajs/jwt": "^1.4.0",
+    "db": "workspace:*",
+    "dotenv": "^17.3.1",
     "elysia": "latest"
   },
   "devDependencies": {

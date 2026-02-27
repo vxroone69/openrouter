@@ -1,6 +1,9 @@
 import { t } from "elysia";
 
 export namespace AuthModel {
+
+    //sign-in handlers
+    
     export const signinSchema = t.Object({
         email: t.String(),
         password: t.String(),
@@ -14,6 +17,15 @@ export namespace AuthModel {
 
     export type signinResponseSchema = typeof signinResponseSchema.static;
 
+    export const signinFailureSchema = t.Object({
+        message: t.Literal("Error while signing in")
+    })
+
+    export type signinFailureSchema = typeof signinFailureSchema.static;
+   
+   
+    //sign-up handlers
+
     export const signupSchema = t.Object({
         email: t.String(),
         password: t.String(),
@@ -25,11 +37,11 @@ export namespace AuthModel {
         id: t.String(),
     })
 
+    export type signupResponseSchema = typeof signupResponseSchema.static;
+
     export const signupFailureSchema = t.Object({
         message: t.Literal("Error while signing up")
     })
-
-    export type signupResponseSchema = typeof signupResponseSchema.static;
 
     export type signupFailureSchema = typeof signupFailureSchema.static;
 

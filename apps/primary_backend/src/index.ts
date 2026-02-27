@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Elysia } from "elysia";
 import {app as authApp} from "./modules/auth"
 
