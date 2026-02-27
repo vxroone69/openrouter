@@ -1,9 +1,9 @@
-elysia.js
 
-requestly - test http requests using a gui
+27/02:
 
-
-auth routes => signup, signin
-api-key => create apikey, get, delete, disable api key
-model => get all the supported models, their pricing, providers etc.
-payment endpoints => rzp/stripe
+initialised neondb
+migrated prisma
+created prisma generate files
+created signup and signin routes under
+tested signup route
+started jwt auth for signin route.
