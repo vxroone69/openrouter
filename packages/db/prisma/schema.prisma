@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -14,100 +8,97 @@ datasource db {
 }
 
 model User {
-  id String @id @default(uuid())
-  email String @unique
-  password String
-  apiKeys ApiKey[]
-  credits Credit[]
-  conversations Conversation[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  email              String              @unique
+  password           String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  credits            Int                 @default(1000)
+  id                 Int                 @id @default(autoincrement())
+  apiKeys            ApiKey[]
+  conversations      Conversation[]
+  onrampTransactions OnrampTransaction[]
 }
 
 model ApiKey {
-  id String @id @default(uuid())
-  key String @unique
-  name String
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Credit {
-  id String @id @default(uuid())
-  amount Int
-  description String?
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model OnrampTransaction {
-  id String @id @default(uuid())
-  amount Int
-  currency String
-  status String
-  provider String
-  transactionHash String?
-  userId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Model {
-  id String @id @default(uuid())
-  name String @unique
-  companyId String
-  company Company @relation(fields: [companyId], references: [id])
-  modelProviderMappings ModelProviderMapping[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Provider {
-  id String @id @default(uuid())
-  name String @unique
-  website String
-  modelProviderMappings ModelProviderMapping[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name            String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  apiKey          String         @unique
+  creditsConsumed Int            @default(0)
+  lastUsed        DateTime?
+  deleted         Boolean        @default(false)
+  disabled        Boolean        @default(false)
+  id              Int            @id @default(autoincrement())
+  userId          Int
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations   Conversation[]
 }
 
 model Company {
-  id String @id @default(uuid())
-  name String @unique
-  website String
-  models Model[]
+  name      String   @unique
+  website   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  models    Model[]
+}
+
+model Model {
+  name                  String                 @unique
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  slug                  String                 @unique
+  id                    Int                    @id @default(autoincrement())
+  companyId             Int
+  company               Company                @relation(fields: [companyId], references: [id])
+  modelProviderMappings ModelProviderMapping[]
+}
+
+model Provider {
+  name                  String                 @unique
+  website               String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  id                    Int                    @id @default(autoincrement())
+  modelProviderMappings ModelProviderMapping[]
 }
 
 model ModelProviderMapping {
-  id String @id @default(uuid())
-  modelId String
-  providerId String
-  inputTokenCost Float
-  outputTokenCost Float
-  model Model @relation(fields: [modelId], references: [id])
-  provider Provider @relation(fields: [providerId], references: [id])
-  conversations Conversation[]
+  inputTokenCost  Int
+  outputTokenCost Int
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  id              Int            @id @default(autoincrement())
+  modelId         Int
+  providerId      Int
+  conversations   Conversation[]
+  model           Model          @relation(fields: [modelId], references: [id])
+  provider        Provider       @relation(fields: [providerId], references: [id])
+}
+
+model OnrampTransaction {
+  amount    Int
+  status    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
-  id String @id @default(uuid())
-  conversationId String @unique
-  userId String
-  input String
-  output String
-  inputTokenCount Int
-  outputTokenCount Int
-  modelProviderMappingId String
-  user User @relation(fields: [userId], references: [id])
-  modelProviderMapping ModelProviderMapping @relation(fields: [modelProviderMappingId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  conversationId         String               @unique
+  input                  String
+  output                 String
+  inputTokenCount        Int
+  outputTokenCount       Int
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  apiKeyId               Int
+  id                     Int                  @id @default(autoincrement())
+  userId                 Int
+  modelProviderMappingId Int
+  apiKey                 ApiKey               @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  modelProviderMapping   ModelProviderMapping @relation(fields: [modelProviderMappingId], references: [id])
+  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

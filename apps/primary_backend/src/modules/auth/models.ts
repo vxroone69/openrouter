@@ -1,48 +1,49 @@
-import { t } from "elysia";
+import { t } from 'elysia'
 
 export namespace AuthModel {
-
-    //sign-in handlers
-    
     export const signinSchema = t.Object({
         email: t.String(),
-        password: t.String(),
+        password: t.String()
     })
 
-    export type signinSchema = typeof signinSchema.static;
+    export type signInSchema = typeof signinSchema.static
 
     export const signinResponseSchema = t.Object({
-        token: t.String(),
+        message: t.Literal("Signed in successfully"),
     })
 
     export type signinResponseSchema = typeof signinResponseSchema.static;
 
     export const signinFailureSchema = t.Object({
-        message: t.Literal("Error while signing in")
+        message: t.Literal("Incorrect credentials")
     })
 
     export type signinFailureSchema = typeof signinFailureSchema.static;
-   
-   
-    //sign-up handlers
 
     export const signupSchema = t.Object({
         email: t.String(),
-        password: t.String(),
+        password: t.String()
     })
 
-    export type signupSchema = typeof signupSchema.static;
+    export type signupSchema = typeof signinSchema.static
 
     export const signupResponseSchema = t.Object({
         id: t.String(),
     })
 
-    export type signupResponseSchema = typeof signupResponseSchema.static;
-
     export const signupFailureSchema = t.Object({
         message: t.Literal("Error while signing up")
     })
 
-    export type signupFailureSchema = typeof signupFailureSchema.static;
+    export type signupResponseSchema = typeof signinResponseSchema.static;
+    export type signupFailureSchema = typeof signupFailureSchema;
 
-} 
+
+    export const profileResponseSchema = t.Object({
+        credits: t.Number()
+    })
+
+    export const profileResponseErrorSchema = t.Object({
+        message: t.Literal("Error while fetching user details")
+    })
+}

@@ -1,5 +1,5 @@
 {
-  "name": "openrouter",
+  "name": "Conduit",
   "private": true,
   "scripts": {
     "build": "turbo run build",
@@ -20,5 +20,8 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "@elysiajs/eden": "^1.4.9"
+  }
 }
