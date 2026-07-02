@@ -45,59 +45,32 @@ export function Signup() {
     });
 
     return (
-        <div className="dark min-h-screen relative flex items-center justify-center bg-background overflow-hidden">
-            {/* Animated gradient orbs */}
-            <div
-                className="absolute w-[600px] h-[600px] rounded-full opacity-[0.07] blur-[120px] animate-pulse"
-                style={{
-                    background:
-                        "radial-gradient(circle, oklch(0.7 0.15 55) 0%, transparent 70%)",
-                    top: "-10%",
-                    right: "-5%",
-                    animationDuration: "8s",
-                }}
-            />
-            <div
-                className="absolute w-[500px] h-[500px] rounded-full opacity-[0.05] blur-[100px] animate-pulse"
-                style={{
-                    background:
-                        "radial-gradient(circle, oklch(0.6 0.2 264) 0%, transparent 70%)",
-                    bottom: "-15%",
-                    left: "-10%",
-                    animationDuration: "12s",
-                    animationDelay: "2s",
-                }}
-            />
-
-            {/* Dot grid pattern */}
+        <div className="dark min-h-screen relative flex items-center justify-center bg-background overflow-hidden px-4 py-10">
             <div
                 className="absolute inset-0 opacity-[0.4]"
                 style={{
-                    backgroundImage:
-                        "radial-gradient(circle at 1px 1px, oklch(1 0 0 / 0.08) 1px, transparent 0)",
-                    backgroundSize: "32px 32px",
+                    backgroundImage: "linear-gradient(oklch(1 0 0 / 0.05) 1px, transparent 1px), linear-gradient(90deg, oklch(1 0 0 / 0.05) 1px, transparent 1px)",
+                    backgroundSize: "40px 40px",
                 }}
             />
 
-            {/* Content */}
             <div className="relative z-10 w-full max-w-[420px] px-6">
-                {/* Brand */}
                 <div className="flex items-center justify-center gap-2.5 mb-10">
                     <div className="flex items-center justify-center size-9 rounded-lg bg-primary/10 border border-primary/20">
                         <Zap className="size-4 text-primary" />
                     </div>
                     <span className="text-lg font-semibold tracking-tight text-foreground">
-                        Conduit
+                        synapse
                     </span>
                 </div>
 
-                <Card className="border-border/50 bg-card/80 backdrop-blur-xl shadow-2xl">
+                <Card className="border-border/60 bg-card/85 backdrop-blur-xl shadow-2xl shadow-black/20">
                     <CardHeader className="text-center pb-2">
                         <CardTitle className="text-xl tracking-tight">
                             Create your account
                         </CardTitle>
                         <CardDescription className="text-muted-foreground/80">
-                            Access 200+ AI models through a single API
+                            Create keys, manage credits, and test model routing
                         </CardDescription>
                     </CardHeader>
 

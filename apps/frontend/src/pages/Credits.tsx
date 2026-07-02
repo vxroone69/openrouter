@@ -62,6 +62,7 @@ export function Credits() {
         0
     );
     const credits = userProfileQuery.data?.credits;
+    const hasLoadError = apiKeysQuery.isError || userProfileQuery.isError;
 
     return (
         <DashboardLayout>
@@ -73,6 +74,29 @@ export function Credits() {
                         Manage your account balance and add credits.
                     </p>
                 </div>
+
+                {hasLoadError && (
+                    <Card className="bg-card/20 border-destructive/30">
+                        <CardContent className="pt-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-start gap-2.5 text-sm text-destructive">
+                                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                                    <span>Failed to load credit data.</span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        apiKeysQuery.refetch();
+                                        userProfileQuery.refetch();
+                                    }}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Balance & usage */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -105,6 +129,8 @@ export function Credits() {
                             <p className="text-3xl font-bold tracking-tight">
                                 {userProfileQuery.isLoading ? (
                                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                                ) : userProfileQuery.isError ? (
+                                    "—"
                                 ) : (
                                     credits
                                 )}

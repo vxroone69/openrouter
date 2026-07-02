@@ -12,6 +12,7 @@ import {
     ArrowRight,
     Loader2,
     Layers,
+    AlertCircle,
 } from "lucide-react";
 
 export function Dashboard() {
@@ -42,21 +43,62 @@ export function Dashboard() {
         0
     );
     const modelCount = modelsQuery.data?.models?.length ?? 0;
-    const isLoading = apiKeysQuery.isLoading;
+    const isLoading = apiKeysQuery.isLoading || modelsQuery.isLoading;
+    const hasError = apiKeysQuery.isError || modelsQuery.isError;
+    const formatLastUsed = (value: Date | string | null | undefined) => {
+        if (!value) return "Never";
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return "Never";
+        return new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        }).format(date);
+    };
 
     return (
         <DashboardLayout>
             <div className="space-y-8">
                 {/* Header */}
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-                    <p className="text-muted-foreground text-sm mt-1">
-                        Overview of your Conduit account.
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+                        <p className="text-muted-foreground text-sm mt-1">
+                            Account health, key activity, and available routing capacity.
+                        </p>
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                        <Link to="/api-keys">
+                            Create key
+                            <ArrowRight className="size-3.5" />
+                        </Link>
+                    </Button>
                 </div>
 
                 {/* Stats */}
-                {isLoading ? (
+                {hasError ? (
+                    <Card className="bg-card/20 border-destructive/30">
+                        <CardContent className="pt-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-start gap-2.5 text-sm text-destructive">
+                                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                                    <span>Failed to load dashboard data.</span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        apiKeysQuery.refetch();
+                                        modelsQuery.refetch();
+                                    }}
+                                >
+                                    Retry
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : isLoading ? (
                     <div className="flex items-center gap-2 text-muted-foreground text-sm py-8">
                         <Loader2 className="size-4 animate-spin" />
                         Loading...
@@ -175,13 +217,14 @@ export function Dashboard() {
                                 </Link>
                             </Button>
                         </div>
-                        <div className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+                        <div className="rounded-lg border border-border/50 bg-card/30 overflow-hidden">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-border/50">
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Name</th>
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Key</th>
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
+                                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Last Used</th>
                                         <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Credits Used</th>
                                     </tr>
                                 </thead>
@@ -207,6 +250,9 @@ export function Dashboard() {
                                                     />
                                                     {key.disabled ? "Disabled" : "Active"}
                                                 </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-muted-foreground">
+                                                {formatLastUsed(key.lastUsed)}
                                             </td>
                                             <td className="px-4 py-3 text-right tabular-nums">
                                                 {(key.creditsConsumed ?? 0).toLocaleString()}

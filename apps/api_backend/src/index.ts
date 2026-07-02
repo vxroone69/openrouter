@@ -6,6 +6,7 @@ import { Gemini } from "./llms/Google";
 import { OpenAi } from "./llms/OpenAI";
 import { Claude } from "./llms/Claude";
 import { LLMResponse } from "./llms/Base";
+import { checkRateLimit } from "./rateLimit/slidingWindow";
 
 const app = new Elysia()
 .use(bearer())
@@ -28,6 +29,21 @@ const app = new Elysia()
 	    return status(403, {
 	      message: "Invalid API Key"
 	    })
+  }
+
+  const rateLimit = await checkRateLimit({
+    key: `rate-limit:api-key:${apiKeydb.id}`,
+    limit: Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? 10),
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_SECONDS ?? 60) * 1000,
+  });
+
+  if (!rateLimit.allowed) {
+    return status(429, {
+      message: "Rate limit exceeded",
+      limit: rateLimit.limit,
+      remaining: rateLimit.remaining,
+      resetAt: rateLimit.resetAt,
+    });
   }
 
   if (apiKeydb?.user.credits <= 0) {
@@ -68,7 +84,7 @@ const app = new Elysia()
     response = await Gemini.chat(ProviderModelName, body.messages)
   }
   
-  if (provider.provider.name === "OpenAI") {
+  if (provider.provider.name === "OpenAI API") {
     response = await OpenAi.chat(ProviderModelName, body.messages)
   }
   

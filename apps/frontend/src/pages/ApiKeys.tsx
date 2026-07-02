@@ -33,6 +33,8 @@ export function ApiKeys() {
     const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+    const [pendingToggleId, setPendingToggleId] = useState<string | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     const apiKeysQuery = useQuery({
         queryKey: ["api-keys"],
@@ -61,6 +63,7 @@ export function ApiKeys() {
 
     const toggleMutation = useMutation({
         mutationFn: async ({ id, disabled }: { id: string; disabled: boolean }) => {
+            setPendingToggleId(id);
             const response = await elysiaClient["api-keys"].put({ id, disabled });
             if (response.error) {
                 const errValue = response.error.value as { message?: string } | undefined;
@@ -71,10 +74,14 @@ export function ApiKeys() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["api-keys"] });
         },
+        onSettled: () => {
+            setPendingToggleId(null);
+        },
     });
 
     const deleteMutation = useMutation({
         mutationFn: async (id: string) => {
+            setPendingDeleteId(id);
             const response = await elysiaClient["api-keys"]({ id }).delete();
             if (response.error) {
                 const errValue = response.error.value as { message?: string } | undefined;
@@ -84,6 +91,9 @@ export function ApiKeys() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+        },
+        onSettled: () => {
+            setPendingDeleteId(null);
         },
     });
 
@@ -103,6 +113,17 @@ export function ApiKeys() {
     };
 
     const apiKeys = apiKeysQuery.data?.apiKeys ?? [];
+    const formatLastUsed = (value: Date | string | null | undefined) => {
+        if (!value) return "Never";
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return "Never";
+        return new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        }).format(date);
+    };
 
     return (
         <DashboardLayout>
@@ -211,6 +232,24 @@ export function ApiKeys() {
                             <Loader2 className="size-4 animate-spin" />
                             Loading keys...
                         </div>
+                    ) : apiKeysQuery.isError ? (
+                        <Card className="bg-card/20 border-destructive/30">
+                            <CardContent className="pt-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div className="flex items-start gap-2.5 text-sm text-destructive">
+                                        <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                                        <span>Failed to load API keys.</span>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => apiKeysQuery.refetch()}
+                                    >
+                                        Retry
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     ) : apiKeys.length === 0 ? (
                         <Card className="bg-card/20 border-border/40 border-dashed">
                             <CardContent className="pt-6">
@@ -224,13 +263,14 @@ export function ApiKeys() {
                             </CardContent>
                         </Card>
                     ) : (
-                        <div className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
-                            <table className="w-full text-sm">
+                        <div className="rounded-lg border border-border/50 bg-card/30 overflow-x-auto">
+                            <table className="w-full min-w-[840px] text-sm">
                                 <thead>
                                     <tr className="border-b border-border/50">
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Name</th>
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Key</th>
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
+                                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Last Used</th>
                                         <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Credits Used</th>
                                         <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Actions</th>
                                     </tr>
@@ -288,6 +328,9 @@ export function ApiKeys() {
                                                     {key.disabled ? "Disabled" : "Active"}
                                                 </span>
                                             </td>
+                                            <td className="px-4 py-3 text-muted-foreground">
+                                                {formatLastUsed(key.lastUsed)}
+                                            </td>
                                             <td className="px-4 py-3 text-right tabular-nums">
                                                 {(key.creditsConsumed ?? 0).toLocaleString()}
                                             </td>
@@ -302,10 +345,12 @@ export function ApiKeys() {
                                                                 disabled: !key.disabled,
                                                             })
                                                         }
-                                                        disabled={toggleMutation.isPending}
+                                                        disabled={pendingToggleId === key.id || pendingDeleteId === key.id}
                                                         title={key.disabled ? "Enable key" : "Disable key"}
                                                     >
-                                                        {key.disabled ? (
+                                                        {pendingToggleId === key.id ? (
+                                                            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                                                        ) : key.disabled ? (
                                                             <ToggleLeft className="size-4 text-muted-foreground" />
                                                         ) : (
                                                             <ToggleRight className="size-4 text-emerald-400" />
@@ -314,11 +359,19 @@ export function ApiKeys() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon-sm"
-                                                        onClick={() => deleteMutation.mutate(key.id)}
-                                                        disabled={deleteMutation.isPending}
+                                                        onClick={() => {
+                                                            if (window.confirm(`Delete ${key.name}?`)) {
+                                                                deleteMutation.mutate(key.id);
+                                                            }
+                                                        }}
+                                                        disabled={pendingToggleId === key.id || pendingDeleteId === key.id}
                                                         title="Delete key"
                                                     >
-                                                        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+                                                        {pendingDeleteId === key.id ? (
+                                                            <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                                                        ) : (
+                                                            <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+                                                        )}
                                                     </Button>
                                                 </div>
                                             </td>
