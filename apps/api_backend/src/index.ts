@@ -7,6 +7,7 @@ import { OpenAi } from "./llms/OpenAI";
 import { Claude } from "./llms/Claude";
 import { LLMResponse } from "./llms/Base";
 import { checkRateLimit } from "./rateLimit/slidingWindow";
+import { tryProviderFallback } from "./routing/providerFallback";
 
 const app = new Elysia()
 .use(bearer())
@@ -70,33 +71,32 @@ const app = new Elysia()
     },
     include: {
       provider: true
-    }
+    },
+	orderBy: {
+		id: "asc"
+	}
   })
 
-  const provider = providers[Math.floor(Math.random()*providers.length)];
+  if (providers.length === 0) {
+  return status(403, {
+    message: "No providers mapped for this model"
+  });
+}
 
-  let response: LLMResponse | null = null
-  if (provider.provider.name === "Google API") {
-    response = await Gemini.chat(ProviderModelName, body.messages)
-  }
+  const providerResult = await tryProviderFallback({
+  providers,
+  modelName: ProviderModelName,
+  messages: body.messages,
+});
 
-  if (provider.provider.name === "Google Vertex") {
-    response = await Gemini.chat(ProviderModelName, body.messages)
-  }
-  
-  if (provider.provider.name === "OpenAI API") {
-    response = await OpenAi.chat(ProviderModelName, body.messages)
-  }
-  
-  if (provider.provider.name === "Claude API") {
-    response = await Claude.chat(ProviderModelName, body.messages)
-  }
+if (!providerResult.ok) {
+  return status(503, {
+    message: "All providers failed",
+    errors: providerResult.errors,
+  });
+}
 
-	  if (!response) {
-	    return status(403, {
-	      message: "No provider found for this model"
-	    }) 
-	  }
+const response = providerResult.response;
 
 	  const totalTokensConsumed = response.inputTokensConsumed + response.outputTokensConsumed;
 	  const output = response.completions.choices
@@ -134,7 +134,7 @@ const app = new Elysia()
 	        outputTokenCount: response.outputTokensConsumed,
 	        userId: apiKeydb.user.id,
 	        apiKeyId: apiKeydb.id,
-	        modelProviderMappingId: provider.id
+	        modelProviderMappingId: providerResult.providerMappingId
 	      }
 	    })
 	  ]);
