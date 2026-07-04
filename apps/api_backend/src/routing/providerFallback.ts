@@ -3,6 +3,8 @@ import { LLMResponse } from "../llms/Base";
 import { Gemini } from "../llms/Google";
 import { OpenAi } from "../llms/OpenAI";
 import { Claude } from "../llms/Claude";
+import { Groq } from "../llms/Groq";
+import { Cloudflare } from "../llms/Cloudflare";
 
 type ProviderMapping = {
     id : number,
@@ -35,8 +37,18 @@ async function callProvider({
     modelName: string,
     messages: Messages,
 }): Promise<LLMResponse> {
-    if (providerName == "Google API" || providerName == "Google Vertex"){
+  if (providerName == "Google API" || providerName == "Google Vertex"){
         return Gemini.chat(modelName, messages)
+    }
+  if (providerName === "Groq API") {
+        return Groq.chat(modelName, messages);
+    }
+  if (providerName === "Cloudflare Workers AI") {
+        const cloudflareModel = modelName.startsWith("@cf/")
+            ? modelName
+            : `@cf/meta/${modelName}`;
+
+        return Cloudflare.chat(cloudflareModel, messages);
     }
   if (providerName === "OpenAI API") {
     return OpenAi.chat(modelName, messages);
@@ -58,10 +70,12 @@ export async function tryProviderFallback({
     modelName: string, 
     messages: Messages
 }): Promise<ProviderFallbackResult> {
-    const errors: {providerName: string, messages: string}[] = [];
+    const errors: {providerName: string, message: string}[] = [];
+    console.log("provider fallback order:", providers.map((provider) => provider.provider.name));
 
     for (const provider of providers){
         const providerName = provider.provider.name;
+        console.log("trying provider:", providerName);
 
         try {
             const response = await callProvider({
@@ -79,7 +93,7 @@ export async function tryProviderFallback({
         } catch (error) {
             errors.push({
                 providerName,
-                messages: error instanceof Error ?
+                message: error instanceof Error ?
                          error.message : 
                          "Unknown provider Error"
             })

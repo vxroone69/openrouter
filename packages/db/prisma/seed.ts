@@ -35,8 +35,8 @@ const models: SeedModel[] = [
     name: "Gemini 3 Flash Preview",
     companyName: "Google",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0, outputTokenCost: 0 },
-      { providerName: "Google Vertex", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "Google API", inputTokenCost: 0.5, outputTokenCost: 3.0 },
+      { providerName: "Google Vertex", inputTokenCost: 0.5, outputTokenCost: 3.0 },
     ],
   },
   {
@@ -44,8 +44,8 @@ const models: SeedModel[] = [
     name: "Gemini 2.5 Flash Lite",
     companyName: "Google",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0, outputTokenCost: 0 },
-      { providerName: "Google Vertex", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "Google API", inputTokenCost: 0.1, outputTokenCost: 0.4 },
+      { providerName: "Google Vertex", inputTokenCost: 0.1, outputTokenCost: 0.4 },
     ],
   },
   {
@@ -53,8 +53,8 @@ const models: SeedModel[] = [
     name: "Gemini 2.5 Flash",
     companyName: "Google",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0, outputTokenCost: 0 },
-      { providerName: "Google Vertex", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "Google API", inputTokenCost: 0.3, outputTokenCost: 2.5 },
+      { providerName: "Google Vertex", inputTokenCost: 0.3, outputTokenCost: 2.5 },
     ],
   },
   {
@@ -62,7 +62,7 @@ const models: SeedModel[] = [
     name: "Llama 3.1 8B Instant",
     companyName: "Groq",
     providers: [
-      { providerName: "Groq API", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "Groq API", inputTokenCost: 0.05, outputTokenCost: 0.08 },
     ],
   },
   {
@@ -70,7 +70,11 @@ const models: SeedModel[] = [
     name: "Llama 3.1 8B Instruct",
     companyName: "Cloudflare",
     providers: [
-      { providerName: "Cloudflare Workers AI", inputTokenCost: 0, outputTokenCost: 0 },
+      {
+        providerName: "Cloudflare Workers AI",
+        inputTokenCost: 0.2,
+        outputTokenCost: 0.2,
+      },
     ],
   },
   {
@@ -78,7 +82,11 @@ const models: SeedModel[] = [
     name: "Llama 3.1 8B Instruct Fast",
     companyName: "Cloudflare",
     providers: [
-      { providerName: "Cloudflare Workers AI", inputTokenCost: 0, outputTokenCost: 0 },
+      {
+        providerName: "Cloudflare Workers AI",
+        inputTokenCost: 0.2,
+        outputTokenCost: 0.2,
+      },
     ],
   },
   {
@@ -86,7 +94,7 @@ const models: SeedModel[] = [
     name: "GPT-5 Nano",
     companyName: "OpenAI",
     providers: [
-      { providerName: "OpenAI API", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "OpenAI API", inputTokenCost: 0.1, outputTokenCost: 0.4 },
     ],
   },
   {
@@ -94,7 +102,7 @@ const models: SeedModel[] = [
     name: "GPT-4.1 Mini",
     companyName: "OpenAI",
     providers: [
-      { providerName: "OpenAI API", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "OpenAI API", inputTokenCost: 0.4, outputTokenCost: 1.6 },
     ],
   },
   {
@@ -102,7 +110,7 @@ const models: SeedModel[] = [
     name: "Claude 3.5 Haiku",
     companyName: "Anthropic",
     providers: [
-      { providerName: "Claude API", inputTokenCost: 0, outputTokenCost: 0 },
+      { providerName: "Claude API", inputTokenCost: 0.8, outputTokenCost: 4.0 },
     ],
   },
 ];
