@@ -2,10 +2,16 @@
   "name": "db",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "seed": "bun prisma/seed.ts"
+  },
   "exports": {
     ".": "./index.ts"
   },
   "private": true,
+  "prisma": {
+    "seed": "bun prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/pg": "^8.16.0",
