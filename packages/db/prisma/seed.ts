@@ -66,16 +66,16 @@ const models: SeedModel[] = [
     ],
   },
   {
-    slug: "cloudflare/llama-3.2-3b-instruct",
-    name: "Llama 3.2 3B Instruct",
+    slug: "cloudflare/llama-3.1-8b-instruct",
+    name: "Llama 3.1 8B Instruct",
     companyName: "Cloudflare",
     providers: [
       { providerName: "Cloudflare Workers AI", inputTokenCost: 0, outputTokenCost: 0 },
     ],
   },
   {
-    slug: "cloudflare/llama-3.3-70b-instruct",
-    name: "Llama 3.3 70B Instruct",
+    slug: "cloudflare/llama-3.1-8b-instruct-fast",
+    name: "Llama 3.1 8B Instruct Fast",
     companyName: "Cloudflare",
     providers: [
       { providerName: "Cloudflare Workers AI", inputTokenCost: 0, outputTokenCost: 0 },
