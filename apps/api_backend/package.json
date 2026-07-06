@@ -8,6 +8,7 @@
   "dependencies": {
     "@elysia/openapi": "^1.4.15",
     "@elysiajs/bearer": "^1.4.4",
+    "@elysiajs/cors": "^1.4.2",
     "@google/genai": "^2.10.0",
     "db": "workspace:*",
     "elysia": "latest",

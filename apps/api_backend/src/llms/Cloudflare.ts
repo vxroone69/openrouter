@@ -1,5 +1,6 @@
+// apps/api_backend/src/llms/Cloudflare.ts
 import { Messages } from "../types";
-import { BaseLLM, LLMResponse } from "./Base";
+import { BaseLLM, LLMResponse, LLMStreamUsage } from "./Base";
 
 const cloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -20,22 +21,19 @@ export class Cloudflare extends BaseLLM {
 
         const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}/ai/run/${normalizedModel}`;
 
-        const response = await fetch(
-            endpoint,
-            {
-                method: "POST",
-                headers: {
-                    "content-type": "application/json",
-                    authorization: `Bearer ${cloudflareApiToken}`,
-                },
-                body: JSON.stringify({
-                    messages: messages.map((message) => ({
-                        role: message.role,
-                        content: message.content,
-                    })),
-                }),
-            }
-        );
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${cloudflareApiToken}`,
+            },
+            body: JSON.stringify({
+                messages: messages.map((message) => ({
+                    role: message.role,
+                    content: message.content,
+                })),
+            }),
+        });
 
         if (!response.ok) {
             console.error("Cloudflare Workers AI request failed:", {
@@ -65,9 +63,29 @@ export class Cloudflare extends BaseLLM {
                 choices: [{
                     message: {
                         content,
-                    }
-                }]
-            }
+                    },
+                }],
+            },
+        };
+    }
+
+    static async *chatStream(
+        model: string,
+        messages: Messages
+    ): AsyncGenerator<string, LLMStreamUsage> {
+        const response = await Cloudflare.chat(model, messages);
+        const content = response.completions.choices[0]?.message.content ?? "";
+        const characters = Array.from(content);
+        const chunkSize = Math.max(1, Math.ceil(characters.length / 24));
+
+        for (let index = 0; index < characters.length; index += chunkSize) {
+            yield characters.slice(index, index + chunkSize).join("");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        return {
+            inputTokensConsumed: response.inputTokensConsumed,
+            outputTokensConsumed: response.outputTokensConsumed,
         };
     }
 }

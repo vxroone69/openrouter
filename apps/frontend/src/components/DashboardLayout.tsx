@@ -5,12 +5,14 @@ import {
     LayoutDashboard,
     Key,
     Coins,
+    MessageSquareText,
     Zap,
     LogOut,
 } from "lucide-react";
 
 const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Playground", href: "/playground", icon: MessageSquareText },
     { label: "API Keys", href: "/api-keys", icon: Key },
     { label: "Credits", href: "/credits", icon: Coins },
 ];

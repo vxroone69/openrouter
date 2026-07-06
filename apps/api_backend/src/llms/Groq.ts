@@ -1,54 +1,69 @@
 import { Messages } from "../types";
-import { BaseLLM, LLMResponse } from "./Base";
+import { BaseLLM, LLMResponse, LLMStreamUsage } from "./Base";
+import OpenAI from "openai";
+
+const client = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1",
+});
 
 export class Groq extends BaseLLM {
     static async chat(model: string, messages: Messages): Promise<LLMResponse> {
-        const apiKey = process.env.GROQ_API_KEY;
-
-        if (!apiKey) {
-            throw new Error("GROQ_API_KEY is missing");
-        }
-
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-                model,
-                messages,
-                max_tokens: 256,
-                temperature: 0,
-            }),
+        const response = await client.chat.completions.create({
+            model,
+            messages,
+            max_tokens: 256,
+            temperature: 0,
         });
 
-        if (!response.ok) {
-            throw new Error(await response.text());
-        }
-
-        const data = await response.json() as {
-            choices?: {
-                message?: {
-                    content?: string;
-                };
-            }[];
-            usage?: {
-                prompt_tokens?: number;
-                completion_tokens?: number;
-            };
-        };
-
         return {
-            inputTokensConsumed: data.usage?.prompt_tokens ?? 0,
-            outputTokensConsumed: data.usage?.completion_tokens ?? 0,
+            inputTokensConsumed: response.usage?.prompt_tokens ?? 0,
+            outputTokensConsumed: response.usage?.completion_tokens ?? 0,
             completions: {
                 choices: [{
                     message: {
-                        content: data.choices?.[0]?.message?.content ?? "",
+                        content: response.choices?.[0]?.message?.content ?? ""
                     }
                 }]
             }
         };
+    }
+
+    static async *chatStream(
+        model: string,
+        messages: Messages
+    ): AsyncGenerator<string, LLMStreamUsage> {
+        const stream = await client.chat.completions.create({
+            model,
+            messages,
+            max_tokens: 256,
+            temperature: 0,
+            stream: true,
+            stream_options: {
+                include_usage: true,
+            },
+        });
+
+        let usage: LLMStreamUsage = {
+            inputTokensConsumed: 0,
+            outputTokensConsumed: 0,
+        };
+
+        for await (const chunk of stream) {
+            const delta = chunk.choices?.[0]?.delta?.content;
+
+            if (delta) {
+                yield delta;
+            }
+
+            if (chunk.usage) {
+                usage = {
+                    inputTokensConsumed: chunk.usage.prompt_tokens ?? usage.inputTokensConsumed,
+                    outputTokensConsumed: chunk.usage.completion_tokens ?? usage.outputTokensConsumed,
+                };
+            }
+        }
+
+        return usage;
     }
 }

@@ -13,6 +13,7 @@ import {
     Loader2,
     Layers,
     AlertCircle,
+    MessageSquareText,
 } from "lucide-react";
 
 export function Dashboard() {
@@ -160,6 +161,28 @@ export function Dashboard() {
 
                 {/* Quick actions */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
+                        <CardContent className="pt-6">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <div className="size-10 rounded-lg bg-primary/5 border border-border/50 flex items-center justify-center mb-3">
+                                        <MessageSquareText className="size-5 text-muted-foreground" />
+                                    </div>
+                                    <h3 className="font-semibold text-sm">Chat Playground</h3>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Test streaming responses with your own model choice.
+                                    </p>
+                                </div>
+                                <Button variant="outline" size="sm" asChild>
+                                    <Link to="/playground">
+                                        Open
+                                        <ArrowRight className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
                         <CardContent className="pt-6">
                             <div className="flex items-start justify-between">
