@@ -17,6 +17,7 @@ model User {
   apiKeys            ApiKey[]
   conversations      Conversation[]
   onrampTransactions OnrampTransaction[]
+  requestLogs        RequestLog[]
 }
 
 model ApiKey {
@@ -32,6 +33,7 @@ model ApiKey {
   userId          Int
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations   Conversation[]
+  requestLogs     RequestLog[]
 }
 
 model Company {
@@ -101,4 +103,45 @@ model Conversation {
   apiKey                 ApiKey               @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
   modelProviderMapping   ModelProviderMapping @relation(fields: [modelProviderMappingId], references: [id])
   user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RequestLog {
+  id              Int                 @id @default(autoincrement())
+  userId          Int
+  apiKeyId        Int
+  model           String
+  provider        String?
+  status          RequestLogStatus
+  errorType       RequestLogErrorType?
+  fallbackUsed    Boolean             @default(false)
+  fallbackCount   Int                 @default(1)
+  promptTokens    Int                 @default(0)
+  completionTokens Int                @default(0)
+  totalTokens     Int                 @default(0)
+  cost            Int                 @default(0)
+  streaming       Boolean             @default(false)
+  latencyMs       Int
+  ttftMs          Int?
+  createdAt       DateTime            @default(now())
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey          ApiKey              @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([model, createdAt])
+  @@index([provider, createdAt])
+}
+
+enum RequestLogStatus {
+  success
+  error
+  rate_limited
+}
+
+enum RequestLogErrorType {
+  timeout
+  provider_5xx
+  invalid_request
+  rate_limit
+  other
 }

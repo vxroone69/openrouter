@@ -110,14 +110,16 @@ export function Playground() {
     const activeApiKeys = apiKeys.filter((key) => !key.disabled);
 
     useEffect(() => {
-        if (!selectedModel && models.length > 0) {
-            setSelectedModel(models[0].slug);
+        const firstModel = models[0];
+        if (!selectedModel && firstModel) {
+            setSelectedModel(firstModel.slug);
         }
     }, [models, selectedModel]);
 
     useEffect(() => {
-        if (!selectedKeyId && activeApiKeys.length > 0) {
-            setSelectedKeyId(activeApiKeys[0].id);
+        const firstApiKey = activeApiKeys[0];
+        if (!selectedKeyId && firstApiKey) {
+            setSelectedKeyId(firstApiKey.id);
         }
     }, [activeApiKeys, selectedKeyId]);
 

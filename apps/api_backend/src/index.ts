@@ -5,6 +5,27 @@ import { Elysia, t } from "elysia";
 import { checkRateLimit } from "./rateLimit/slidingWindow";
 import { tryProviderFallback, tryProviderFallbackStream } from "./routing/providerFallback";
 import { createOpenAIChatCompletionStream } from "./streaming/openaiChatCompletionStream";
+import { classifyRequestError, scheduleRequestLog } from "./logging/requestLog";
+
+function elapsedMs(startedAt: number) {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function totalTokens(inputTokensConsumed: number, outputTokensConsumed: number) {
+  return inputTokensConsumed + outputTokensConsumed;
+}
+
+function costInMicrodollars(
+  inputTokensConsumed: number,
+  outputTokensConsumed: number,
+  inputTokenCost: number,
+  outputTokenCost: number
+) {
+  // The seed values are priced like "$ per 1M tokens".
+  // That means the raw per-token cost is in microdollars, so we store microdollars here.
+  const estimatedCost = inputTokensConsumed * inputTokenCost + outputTokensConsumed * outputTokenCost;
+  return Math.max(0, Math.round(estimatedCost));
+}
 
 const app = new Elysia()
   .use(cors({
@@ -13,8 +34,10 @@ const app = new Elysia()
   }))
   .use(bearer())
   .post("/api/v1/chat/completions", async ({ status, bearer: apiKey, body }) => {
+    const requestStartedAt = performance.now();
     const model = body.model;
     const [, providerModelName] = model.split("/");
+    const streamingRequested = Boolean(body.stream);
 
     const apiKeydb = await prisma.apiKey.findFirst({
       where: {
@@ -34,56 +57,12 @@ const app = new Elysia()
       });
     }
 
-    const rateLimit = await checkRateLimit({
-      key: `rate-limit:api-key:${apiKeydb.id}`,
-      limit: Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? 10),
-      windowMs: Number(process.env.RATE_LIMIT_WINDOW_SECONDS ?? 60) * 1000,
-    });
-
-    if (!rateLimit.allowed) {
-      return status(429, {
-        message: "Rate limit exceeded",
-        limit: rateLimit.limit,
-        remaining: rateLimit.remaining,
-        resetAt: rateLimit.resetAt,
-      });
-    }
-
-    if (apiKeydb.user.credits <= 0) {
-      return status(403, {
-        message: "Insufficient Credits"
-      });
-    }
-
-    const modeldb = await prisma.model.findFirst({
-      where: {
-        slug: model
-      }
-    });
-
-    if (!modeldb) {
-      return status(403, {
-        message: "Unsupported Model"
-      });
-    }
-
-    const providers = await prisma.modelProviderMapping.findMany({
-      where: {
-        modelId: modeldb.id
-      },
-      include: {
-        provider: true
-      },
-      orderBy: {
-        id: "asc"
-      }
-    });
-
-    if (providers.length === 0) {
-      return status(403, {
-        message: "No providers mapped for this model"
-      });
-    }
+    const logBase = {
+      userId: apiKeydb.user.id,
+      apiKeyId: apiKeydb.id,
+      model,
+      streaming: streamingRequested,
+    };
 
     const persistUsage = async ({
       providerMappingId,
@@ -96,7 +75,7 @@ const app = new Elysia()
       inputTokensConsumed: number;
       outputTokensConsumed: number;
     }) => {
-      const totalTokensConsumed = inputTokensConsumed + outputTokensConsumed;
+      const totalTokensConsumed = totalTokens(inputTokensConsumed, outputTokensConsumed);
 
       try {
         await prisma.$transaction(
@@ -147,6 +126,106 @@ const app = new Elysia()
       }
     };
 
+    const logDeniedRequest = (details: {
+      status: "error" | "rate_limited";
+      errorType: "timeout" | "provider_5xx" | "invalid_request" | "rate_limit" | "other" | null;
+      provider?: string | null;
+      fallbackCount?: number;
+    }) => {
+      scheduleRequestLog({
+        ...logBase,
+        status: details.status,
+        errorType: details.errorType,
+        provider: details.provider ?? null,
+        fallbackUsed: (details.fallbackCount ?? 0) > 1,
+        fallbackCount: details.fallbackCount ?? 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        latencyMs: elapsedMs(requestStartedAt),
+        ttftMs: null,
+      });
+    };
+
+    const rateLimit = await checkRateLimit({
+      key: `rate-limit:api-key:${apiKeydb.id}`,
+      limit: Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? 10),
+      windowMs: Number(process.env.RATE_LIMIT_WINDOW_SECONDS ?? 60) * 1000,
+    });
+
+    if (!rateLimit.allowed) {
+      logDeniedRequest({
+        status: "rate_limited",
+        errorType: "rate_limit",
+      });
+
+      return status(429, {
+        message: "Rate limit exceeded",
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.resetAt,
+      });
+    }
+
+    if (apiKeydb.user.credits <= 0) {
+      logDeniedRequest({
+        status: "error",
+        errorType: "other",
+      });
+
+      return status(403, {
+        message: "Insufficient Credits"
+      });
+    }
+
+    const modeldb = await prisma.model.findFirst({
+      where: {
+        slug: model
+      }
+    });
+
+    if (!modeldb) {
+      logDeniedRequest({
+        status: "error",
+        errorType: "invalid_request",
+      });
+
+      return status(403, {
+        message: "Unsupported Model"
+      });
+    }
+
+    const providers = await prisma.modelProviderMapping.findMany({
+      where: {
+        modelId: modeldb.id
+      },
+      include: {
+        provider: true
+      },
+      orderBy: {
+        id: "asc"
+      }
+    });
+
+    const providerMappingById = new Map(
+      providers.map((provider) => [
+        provider.id,
+        provider,
+      ])
+    );
+
+    if (providers.length === 0) {
+      logDeniedRequest({
+        status: "error",
+        errorType: "invalid_request",
+      });
+
+      return status(403, {
+        message: "No providers mapped for this model"
+      });
+    }
+
     if (body.stream) {
       const providerResult = await tryProviderFallbackStream({
         providers,
@@ -154,24 +233,77 @@ const app = new Elysia()
         messages: body.messages,
       });
 
+      const selectedProviderMapping = providerMappingById.get(providerResult.ok ? providerResult.providerMappingId : -1);
+
       if (!providerResult.ok) {
+        scheduleRequestLog({
+          ...logBase,
+          status: "error",
+          errorType: classifyRequestError(
+            providerResult.errors.map((error) => error.message).join(" | ")
+          ),
+          provider: providerResult.lastProviderName ?? null,
+          fallbackUsed: providerResult.attemptedCount > 1,
+          fallbackCount: providerResult.attemptedCount,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          cost: 0,
+          streaming: true,
+          latencyMs: elapsedMs(requestStartedAt),
+          ttftMs: null,
+        });
+
         return status(503, {
           message: "All providers failed",
           errors: providerResult.errors,
         });
       }
 
+      let ttftMs: number | null = null;
+
       return createOpenAIChatCompletionStream({
         model,
         firstChunk: providerResult.firstChunk,
         iterator: providerResult.iterator,
-        onDone: (usage, output) =>
-          persistUsage({
+        onFirstContentChunk: () => {
+          if (ttftMs == null) {
+            ttftMs = elapsedMs(requestStartedAt);
+          }
+        },
+        onDone: (usage, output) => {
+          void persistUsage({
             providerMappingId: providerResult.providerMappingId,
             output,
             inputTokensConsumed: usage.inputTokensConsumed,
             outputTokensConsumed: usage.outputTokensConsumed,
-          }),
+          });
+
+          const responseCost = selectedProviderMapping
+            ? costInMicrodollars(
+                usage.inputTokensConsumed,
+                usage.outputTokensConsumed,
+                selectedProviderMapping.inputTokenCost,
+                selectedProviderMapping.outputTokenCost
+              )
+            : totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed);
+
+          scheduleRequestLog({
+            ...logBase,
+            status: "success",
+            errorType: null,
+            provider: providerResult.providerName,
+            fallbackUsed: providerResult.attemptedCount > 1,
+            fallbackCount: providerResult.attemptedCount,
+            promptTokens: usage.inputTokensConsumed,
+            completionTokens: usage.outputTokensConsumed,
+            totalTokens: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+            cost: responseCost,
+            streaming: true,
+            latencyMs: elapsedMs(requestStartedAt),
+            ttftMs,
+          });
+        },
       });
     }
 
@@ -182,6 +314,24 @@ const app = new Elysia()
     });
 
     if (!providerResult.ok) {
+      scheduleRequestLog({
+        ...logBase,
+        status: "error",
+        errorType: classifyRequestError(
+          providerResult.errors.map((error) => error.message).join(" | ")
+        ),
+        provider: providerResult.lastProviderName ?? null,
+        fallbackUsed: providerResult.attemptedCount > 1,
+        fallbackCount: providerResult.attemptedCount,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        streaming: false,
+        latencyMs: elapsedMs(requestStartedAt),
+        ttftMs: null,
+      });
+
       return status(503, {
         message: "All providers failed",
         errors: providerResult.errors,
@@ -189,6 +339,15 @@ const app = new Elysia()
     }
 
     const response = providerResult.response;
+    const selectedProviderMapping = providerMappingById.get(providerResult.providerMappingId);
+    const responseCost = selectedProviderMapping
+      ? costInMicrodollars(
+          response.inputTokensConsumed,
+          response.outputTokensConsumed,
+          selectedProviderMapping.inputTokenCost,
+          selectedProviderMapping.outputTokenCost
+        )
+      : totalTokens(response.inputTokensConsumed, response.outputTokensConsumed);
     const output = response.completions.choices
       .map((choice) => choice.message.content)
       .join("\n");
@@ -198,6 +357,22 @@ const app = new Elysia()
       output,
       inputTokensConsumed: response.inputTokensConsumed,
       outputTokensConsumed: response.outputTokensConsumed,
+    });
+
+    scheduleRequestLog({
+      ...logBase,
+      status: "success",
+      errorType: null,
+      provider: providerResult.providerName,
+      fallbackUsed: providerResult.attemptedCount > 1,
+      fallbackCount: providerResult.attemptedCount,
+      promptTokens: response.inputTokensConsumed,
+      completionTokens: response.outputTokensConsumed,
+      totalTokens: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+      cost: responseCost,
+      streaming: false,
+      latencyMs: elapsedMs(requestStartedAt),
+      ttftMs: null,
     });
 
     return response;

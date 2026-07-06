@@ -49,11 +49,13 @@ export function createOpenAIChatCompletionStream({
     model,
     firstChunk,
     iterator,
+    onFirstContentChunk,
     onDone,
 }: {
     model: string;
     firstChunk: string;
     iterator: AsyncIterator<string, LLMStreamUsage>;
+    onFirstContentChunk?: () => void;
     onDone: (usage: LLMStreamUsage, output: string) => Promise<void> | void;
 }) {
     const id = `chatcmpl-${crypto.randomUUID()}`;
@@ -63,9 +65,17 @@ export function createOpenAIChatCompletionStream({
         new ReadableStream<Uint8Array>({
             start(controller) {
                 const output: string[] = [];
+                let hasMarkedFirstContentChunk = false;
 
                 const push = (value: string) => {
                     controller.enqueue(encoder.encode(value));
+                };
+
+                const markFirstContentChunk = () => {
+                    if (!hasMarkedFirstContentChunk) {
+                        hasMarkedFirstContentChunk = true;
+                        onFirstContentChunk?.();
+                    }
                 };
 
                 (async () => {
@@ -78,6 +88,7 @@ export function createOpenAIChatCompletionStream({
 
                     if (firstChunk) {
                         output.push(firstChunk);
+                        markFirstContentChunk();
                         push(buildChunk({
                             id,
                             model,
@@ -100,6 +111,7 @@ export function createOpenAIChatCompletionStream({
                         }
 
                         output.push(next.value);
+                        markFirstContentChunk();
                         push(buildChunk({
                             id,
                             model,

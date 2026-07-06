@@ -19,10 +19,13 @@ type ProviderFallbackResult =
         ok: true,
         response: LLMResponse,
         providerMappingId: number,
-        providerName: string
+        providerName: string,
+        attemptedCount: number,
     }
     | {
         ok: false,
+        attemptedCount: number,
+        lastProviderName?: string,
         errors: {
             providerName: string,
             message: string,
@@ -34,11 +37,14 @@ type StreamProviderFallbackResult =
         ok: true,
         providerMappingId: number,
         providerName: string,
+        attemptedCount: number,
         iterator: AsyncIterator<string, LLMStreamUsage>,
         firstChunk: string,
     }
     | {
         ok: false,
+        attemptedCount: number,
+        lastProviderName?: string,
         errors: {
             providerName: string,
             message: string,
@@ -124,8 +130,10 @@ export async function tryProviderFallback({
 }): Promise<ProviderFallbackResult> {
     const errors: { providerName: string, message: string }[] = [];
 
+    let attemptedCount = 0;
     for (const provider of providers) {
         const providerName = provider.provider.name;
+        attemptedCount += 1;
 
         try {
             const response = await callProvider({
@@ -139,6 +147,7 @@ export async function tryProviderFallback({
                 response,
                 providerMappingId: provider.id,
                 providerName,
+                attemptedCount,
             };
         } catch (error) {
             errors.push({
@@ -151,8 +160,10 @@ export async function tryProviderFallback({
     }
 
     return {
-        ok: false,
-        errors,
+      ok: false,
+      attemptedCount,
+      lastProviderName: providers.at(-1)?.provider.name,
+      errors,
     };
 }
 
@@ -167,8 +178,10 @@ export async function tryProviderFallbackStream({
 }): Promise<StreamProviderFallbackResult> {
     const errors: { providerName: string, message: string }[] = [];
 
+    let attemptedCount = 0;
     for (const provider of providers) {
         const providerName = provider.provider.name;
+        attemptedCount += 1;
 
         try {
             const stream = await callProviderStream({
@@ -188,6 +201,7 @@ export async function tryProviderFallbackStream({
                 ok: true,
                 providerMappingId: provider.id,
                 providerName,
+                attemptedCount,
                 iterator,
                 firstChunk: first.value,
             };
@@ -202,7 +216,9 @@ export async function tryProviderFallbackStream({
     }
 
     return {
-        ok: false,
-        errors,
+      ok: false,
+      attemptedCount,
+      lastProviderName: providers.at(-1)?.provider.name,
+      errors,
     };
 }

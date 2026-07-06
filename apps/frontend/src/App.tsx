@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router";
 import { Signin } from "./pages/Signin";
 import { Signup } from "./pages/Signup";
 import { Dashboard } from "./pages/Dashboard";
+import { Analytics } from "./pages/Analytics";
 import { Credits } from "./pages/Credits";
 import { ApiKeys } from "./pages/ApiKeys";
 import { Landing } from "./pages/Landing";
@@ -40,6 +41,7 @@ export function App() {
               <Route path={"/signup"} element={<Signup />} /> 
               <Route path={"/signin"} element={<Signin />} /> 
               <Route path={"/dashboard"} element={<ProtectedRoute><Dashboard /></ProtectedRoute>} /> 
+              <Route path={"/analytics"} element={<ProtectedRoute><Analytics /></ProtectedRoute>} /> 
               <Route path={"/playground"} element={<ProtectedRoute><Playground /></ProtectedRoute>} /> 
               <Route path={"/credits"} element={<ProtectedRoute><Credits /></ProtectedRoute>} /> 
               <Route path={"/api-keys"} element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} /> 

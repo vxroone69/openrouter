@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors";
 import {app as authApp} from "./modules/auth"
 import {app as apiKeyApp} from "./modules/apiKeys"
 import {app as modelsApp} from "./modules/models"
+import {app as analyticsApp} from "./modules/analytics"
 import {app as paymentsApp} from "./modules/payments"
 
 export const app = new Elysia()
@@ -11,10 +12,11 @@ export const app = new Elysia()
       origin: "http://localhost:3001",
       credentials: true
       }))
-      .use(authApp)
-      .use(apiKeyApp)
-      .use(modelsApp)
-      .use(paymentsApp)
+.use(authApp)
+.use(apiKeyApp)
+.use(modelsApp)
+.use(analyticsApp)
+.use(paymentsApp)
 
 
 export type App = typeof app;
