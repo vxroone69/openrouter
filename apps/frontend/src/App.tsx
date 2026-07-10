@@ -7,6 +7,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Analytics } from "./pages/Analytics";
 import { Credits } from "./pages/Credits";
 import { ApiKeys } from "./pages/ApiKeys";
+import { Memory } from "./pages/Memory";
 import { Landing } from "./pages/Landing";
 import { Playground } from "./pages/Playground";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -43,6 +44,7 @@ export function App() {
               <Route path={"/dashboard"} element={<ProtectedRoute><Dashboard /></ProtectedRoute>} /> 
               <Route path={"/analytics"} element={<ProtectedRoute><Analytics /></ProtectedRoute>} /> 
               <Route path={"/playground"} element={<ProtectedRoute><Playground /></ProtectedRoute>} /> 
+              <Route path={"/memory"} element={<ProtectedRoute><Memory /></ProtectedRoute>} /> 
               <Route path={"/credits"} element={<ProtectedRoute><Credits /></ProtectedRoute>} /> 
               <Route path={"/api-keys"} element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} /> 
             </Routes>

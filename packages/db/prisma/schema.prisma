@@ -18,6 +18,7 @@ model User {
   conversations      Conversation[]
   onrampTransactions OnrampTransaction[]
   requestLogs        RequestLog[]
+  memories           Memory[]
 }
 
 model ApiKey {
@@ -34,6 +35,7 @@ model ApiKey {
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations   Conversation[]
   requestLogs     RequestLog[]
+  memories           Memory[]
 }
 
 model Company {
@@ -132,6 +134,30 @@ model RequestLog {
   @@index([provider, createdAt])
 }
 
+model Memory {
+  id Int @id @default(autoincrement())
+  userId Int
+  apiKeyId Int?
+  scope MemoryScope @default(user)
+  content     String
+  source      String?
+  confidence  Float       @default(0.5)
+  importance  Int         @default(1)
+  enabled     Boolean     @default(true)
+  archived    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lastUsedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([userId, enabled, archived])
+  @@index([userId, scope])
+  @@index([userId, lastUsedAt])
+
+}
+
 enum RequestLogStatus {
   success
   error
@@ -145,3 +171,11 @@ enum RequestLogErrorType {
   rate_limit
   other
 }
+
+enum MemoryScope {
+  conversation
+  user
+  project
+  semantic
+}
+

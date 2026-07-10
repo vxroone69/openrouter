@@ -9,12 +9,14 @@ import {
     Zap,
     LogOut,
     BarChart3,
+    Brain,
 } from "lucide-react";
 
 const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
     { label: "Playground", href: "/playground", icon: MessageSquareText },
+    { label: "Memory", href: "/memory", icon: Brain },
     { label: "API Keys", href: "/api-keys", icon: Key },
     { label: "Credits", href: "/credits", icon: Coins },
 ];

@@ -12,6 +12,7 @@ import {
     ArrowUpRight,
     Bot,
     CheckCircle2,
+    BookmarkPlus,
     Loader2,
     Play,
     Square,
@@ -53,6 +54,8 @@ type PlaygroundApiKey = {
     disabled: boolean;
 };
 
+type MemoryMode = "user" | "api_key";
+
 const starterPrompts = [
     "Explain streaming responses in one short paragraph.",
     "Write a two-line summary of why model switching is useful.",
@@ -84,6 +87,10 @@ export function Playground() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [lastUsage, setLastUsage] = useState<StreamUsage | null>(null);
     const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+    const [lastTurnPrompt, setLastTurnPrompt] = useState<string>("");
+    const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [memoryMode, setMemoryMode] = useState<MemoryMode>("user");
     const abortRef = useRef<AbortController | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -146,6 +153,10 @@ export function Playground() {
         setErrorMessage(null);
         setLastUsage(null);
         setLastLatencyMs(null);
+        setLastTurnPrompt("");
+        setSaveStatus("idle");
+        setSaveError(null);
+        setMemoryMode("user");
         setStatus("idle");
         setIsStreaming(false);
     };
@@ -192,6 +203,9 @@ export function Playground() {
         setErrorMessage(null);
         setLastUsage(null);
         setLastLatencyMs(null);
+        setLastTurnPrompt(trimmed);
+        setSaveStatus("idle");
+        setSaveError(null);
         setStatus("streaming");
         setIsStreaming(true);
 
@@ -221,7 +235,10 @@ export function Playground() {
         };
 
         try {
-            const response = await fetch("http://localhost:3002/api/v1/chat/completions", {
+            const url = new URL("http://localhost:3002/api/v1/chat/completions");
+            url.searchParams.set("memory", memoryMode);
+
+            const response = await fetch(url.toString(), {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -384,6 +401,36 @@ export function Playground() {
         }
     };
 
+    const saveLastTurnAsMemory = async () => {
+        if (!lastTurnPrompt.trim() || saveStatus === "saving") return;
+
+        setSaveStatus("saving");
+        setSaveError(null);
+
+        try {
+            if (!selectedApiKey) {
+                throw new Error("Pick an API key first");
+            }
+
+            const response = await elysiaClient.memory.post({
+                content: lastTurnPrompt.trim(),
+                scope: "user",
+                source: "playground/manual",
+                importance: 2,
+                apiKeyId: selectedApiKey.id,
+            });
+
+            if (response.error) {
+                throw new Error("Failed to save memory");
+            }
+
+            setSaveStatus("saved");
+        } catch (error) {
+            setSaveStatus("error");
+            setSaveError(error instanceof Error ? error.message : "Failed to save memory");
+        }
+    };
+
     const renderBody = () => {
         if (apiKeysQuery.isLoading || modelsQuery.isLoading) {
             return (
@@ -442,6 +489,22 @@ export function Playground() {
                                         {selectedModelData.slug}
                                     </p>
                                 )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="memory-mode-select">Memory mode</Label>
+                                <Select value={memoryMode} onValueChange={(value) => setMemoryMode(value as MemoryMode)}>
+                                    <SelectTrigger id="memory-mode-select" className="w-full bg-black/20">
+                                        <SelectValue placeholder="Select memory mode" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="user">User memories only</SelectItem>
+                                        <SelectItem value="api_key">API key memories only</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Controls which saved memories are injected into the request.
+                                </p>
                             </div>
 
                             <div className="space-y-2">
@@ -654,12 +717,12 @@ export function Playground() {
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    {isStreaming ? (
-                                        <Button type="button" variant="outline" onClick={stopStream}>
-                                            <Square className="size-3.5" />
-                                            Stop
-                                        </Button>
+                            <div className="flex items-center gap-2">
+                                {isStreaming ? (
+                                    <Button type="button" variant="outline" onClick={stopStream}>
+                                        <Square className="size-3.5" />
+                                        Stop
+                                    </Button>
                                     ) : (
                                         <Button
                                             type="submit"
@@ -674,6 +737,19 @@ export function Playground() {
                                             Send
                                         </Button>
                                     )}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => void saveLastTurnAsMemory()}
+                                        disabled={!lastTurnPrompt.trim() || saveStatus === "saving"}
+                                    >
+                                        <BookmarkPlus className="size-3.5" />
+                                        {saveStatus === "saving"
+                                            ? "Saving"
+                                            : saveStatus === "saved"
+                                                ? "Saved"
+                                                : "Save memory"}
+                                    </Button>
                                 </div>
                             </div>
 
@@ -688,6 +764,13 @@ export function Playground() {
                                 <div className="flex items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
                                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                                     <span>{errorMessage}</span>
+                                </div>
+                            )}
+
+                            {saveError && saveStatus === "error" && (
+                                <div className="flex items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
+                                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                                    <span>{saveError}</span>
                                 </div>
                             )}
                         </form>

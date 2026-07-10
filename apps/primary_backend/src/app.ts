@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors";
 import {app as authApp} from "./modules/auth"
 import {app as apiKeyApp} from "./modules/apiKeys"
 import {app as modelsApp} from "./modules/models"
+import {app as memoryApp} from "./modules/memory"
 import {app as analyticsApp} from "./modules/analytics"
 import {app as paymentsApp} from "./modules/payments"
 
@@ -15,6 +16,7 @@ export const app = new Elysia()
 .use(authApp)
 .use(apiKeyApp)
 .use(modelsApp)
+.use(memoryApp)
 .use(analyticsApp)
 .use(paymentsApp)
 

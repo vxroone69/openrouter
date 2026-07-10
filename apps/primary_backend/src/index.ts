@@ -1,3 +1,28 @@
-import {app} from "./app"
+import "dotenv/config";
+import { Elysia } from "elysia";
+import { cors } from "@elysiajs/cors";
+import { app as authApp } from "./modules/auth";
+import { app as apiKeyApp } from "./modules/apiKeys";
+import { app as modelsApp } from "./modules/models";
+import { app as memoryApp } from "./modules/memory";
+import { app as analyticsApp } from "./modules/analytics";
+import { app as paymentsApp } from "./modules/payments";
 
-app.listen(3000);
+export const app = new Elysia()
+    .use(
+        cors({
+            origin: "http://localhost:3001",
+            credentials: true,
+        })
+    )
+    .use(authApp)
+    .use(apiKeyApp)
+    .use(modelsApp)
+    .use(memoryApp)
+    .use(analyticsApp)
+    .use(paymentsApp)
+    .listen(3000);
+
+console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
+
+export type App = typeof app;

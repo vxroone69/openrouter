@@ -1,4 +1,4 @@
-import { Cookie, Elysia } from "elysia";
+import { Elysia } from "elysia";
 import { AuthModel } from "./models";
 import { AuthService } from "./service";
 import jwt from "@elysiajs/jwt";
@@ -30,28 +30,30 @@ export const app = new Elysia({ prefix: "auth" })
             400: AuthModel.signupFailureSchema,
         }
     })
-    .post("/sign-in", async ({ jwt, body, status, cookie: { auth } }) => {
-        const { correctCredentials, userId } = await AuthService.signin(body.email, body.password)
-        if (correctCredentials && userId) {
-            const token = await jwt.sign({ userId })
-            if (!auth) {
-                auth = new Cookie("auth", {});
-            }
+    .post("/sign-in", async ({ jwt, body, status, set }) => {
+        const { correctCredentials, userId } = await AuthService.signin(body.email, body.password);
 
-            auth.set({
+        if (!correctCredentials || !userId) {
+            return status(403, {
+                message: "Incorrect credentials",
+            });
+        }
+
+        const token = await jwt.sign({ userId });
+
+        set.cookie = {
+            auth: {
                 value: token,
                 httpOnly: true,
                 maxAge: 7 * 86400,
-            })
+                path: "/",
+                sameSite: "lax",
+            },
+        };
 
-            return {
-                message: "Signed in successfully"
-            }
-        } else {
-            return status(403, {
-                message: "Incorrect credentials"
-            })
-        }
+        return {
+            message: "Signed in successfully",
+        };
     }, {
         body: AuthModel.signinSchema,
         response: {

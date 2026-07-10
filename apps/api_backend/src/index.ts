@@ -6,6 +6,9 @@ import { checkRateLimit } from "./rateLimit/slidingWindow";
 import { tryProviderFallback, tryProviderFallbackStream } from "./routing/providerFallback";
 import { createOpenAIChatCompletionStream } from "./streaming/openaiChatCompletionStream";
 import { classifyRequestError, scheduleRequestLog } from "./logging/requestLog";
+import { retrieveMemoryForUser } from "./memory/retrieveMemory";
+import { injectMemoryIntoMessages } from "./memory/injectMemoryIntoMessages";
+import { writeMemoryFromChatTurn } from "./memory/writeMemory";
 
 function elapsedMs(startedAt: number) {
   return Math.max(0, Math.round(performance.now() - startedAt));
@@ -33,7 +36,7 @@ const app = new Elysia()
     credentials: true,
   }))
   .use(bearer())
-  .post("/api/v1/chat/completions", async ({ status, bearer: apiKey, body }) => {
+  .post("/api/v1/chat/completions", async ({ status, bearer: apiKey, body, query }) => {
     const requestStartedAt = performance.now();
     const model = body.model;
     const [, providerModelName] = model.split("/");
@@ -124,6 +127,18 @@ const app = new Elysia()
       } catch (error) {
         console.error("Failed to persist usage accounting:", error);
       }
+    };
+
+    const persistMemory = (assistantOutput: string) => {
+      void writeMemoryFromChatTurn({
+        userId: apiKeydb.user.id,
+        apiKeyId: apiKeydb.id,
+        messages: effectiveMessages,
+        assistantOutput,
+        model,
+      }).catch((error) => {
+        console.error("Failed to persist chat memory:", error);
+      });
     };
 
     const logDeniedRequest = (details: {
@@ -226,11 +241,20 @@ const app = new Elysia()
       });
     }
 
+    const memoryMode = typeof query.memory === "string" ? query.memory : "user";
+    const memories = await retrieveMemoryForUser(
+      apiKeydb.user.id,
+      apiKeydb.id,
+      5,
+      memoryMode
+    );
+    const effectiveMessages = injectMemoryIntoMessages(body.messages, memories);
+
     if (body.stream) {
       const providerResult = await tryProviderFallbackStream({
         providers,
         modelName: providerModelName,
-        messages: body.messages,
+        messages: effectiveMessages,
       });
 
       const selectedProviderMapping = providerMappingById.get(providerResult.ok ? providerResult.providerMappingId : -1);
@@ -278,6 +302,7 @@ const app = new Elysia()
             inputTokensConsumed: usage.inputTokensConsumed,
             outputTokensConsumed: usage.outputTokensConsumed,
           });
+          persistMemory(output);
 
           const responseCost = selectedProviderMapping
             ? costInMicrodollars(
@@ -310,7 +335,7 @@ const app = new Elysia()
     const providerResult = await tryProviderFallback({
       providers,
       modelName: providerModelName,
-      messages: body.messages,
+      messages: effectiveMessages,
     });
 
     if (!providerResult.ok) {
@@ -358,6 +383,7 @@ const app = new Elysia()
       inputTokensConsumed: response.inputTokensConsumed,
       outputTokensConsumed: response.outputTokensConsumed,
     });
+    persistMemory(output);
 
     scheduleRequestLog({
       ...logBase,
@@ -386,7 +412,13 @@ const app = new Elysia()
           assistant: "assistant"
         }),
         content: t.String()
-      }))
+        }))
+    }),
+    query: t.Object({
+      memory: t.Optional(t.Union([
+        t.Literal("user"),
+        t.Literal("api_key"),
+      ])),
     })
   })
   .listen(3002);
