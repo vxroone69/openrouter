@@ -13,6 +13,7 @@ model User {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   credits            Int                 @default(1000)
+  plan               UserPlan            @default(free)
   id                 Int                 @id @default(autoincrement())
   apiKeys            ApiKey[]
   conversations      Conversation[]
@@ -52,6 +53,7 @@ model Model {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   slug                  String                 @unique
+  minPlan               UserPlan               @default(free)
   id                    Int                    @id @default(autoincrement())
   companyId             Int
   company               Company                @relation(fields: [companyId], references: [id])
@@ -202,4 +204,9 @@ enum MemorySavedBy {
   rule
   llm
   compression
+}
+
+enum UserPlan {
+  free
+  pro
 }

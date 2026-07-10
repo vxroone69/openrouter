@@ -42,8 +42,8 @@ export function Credits() {
     })
 
     const onrampMutation = useMutation({
-        mutationFn: async () => {
-            const response = await elysiaClient.payments.onramp.post();
+        mutationFn: async (packageId: "starter" | "growth" | "scale") => {
+            const response = await elysiaClient.payments.credits.post({ packageId });
             if (response.error) {
                 const errValue = response.error.value as { message?: string } | undefined;
                 throw new Error(errValue?.message || "Failed to add credits");
@@ -56,12 +56,26 @@ export function Credits() {
         },
     });
 
+    const upgradeMutation = useMutation({
+        mutationFn: async () => {
+            const response = await elysiaClient.payments.upgrade.post();
+            if (response.error) {
+                throw new Error("Failed to upgrade plan");
+            }
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+        },
+    });
+
     const apiKeys = apiKeysQuery.data?.apiKeys ?? [];
     const totalCreditsUsed = apiKeys.reduce(
         (sum, k) => sum + (k.creditsConsumed ?? 0),
         0
     );
     const credits = userProfileQuery.data?.credits;
+    const plan = userProfileQuery.data?.plan ?? "free";
     const hasLoadError = apiKeysQuery.isError || userProfileQuery.isError;
 
     return (
@@ -177,46 +191,73 @@ export function Credits() {
                 {/* Add credits */}
                 <Card className="bg-card/30 border-border/50">
                     <CardHeader>
+                        <CardTitle className="text-lg">Plan</CardTitle>
+                        <CardDescription>
+                            Pro unlocks paid provider models and higher-cost routing options.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm text-muted-foreground">Current plan</p>
+                            <p className="text-2xl font-bold capitalize">{plan}</p>
+                        </div>
+                        <Button
+                            size="lg"
+                            disabled={plan === "pro" || upgradeMutation.isPending}
+                            onClick={() => upgradeMutation.mutate()}
+                        >
+                            {upgradeMutation.isPending ? (
+                                <>
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Upgrading...
+                                </>
+                            ) : plan === "pro" ? (
+                                "Pro active"
+                            ) : (
+                                "Upgrade to Pro"
+                            )}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-card/30 border-border/50">
+                    <CardHeader>
                         <CardTitle className="text-lg">Add Credits</CardTitle>
                         <CardDescription>
-                            Top up your account with 1,000 credits per transaction.
+                            Mock credit packages for testing the commercial flow.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                            <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-card/50 px-4 py-3 flex-1">
+                        <div className="grid gap-3 md:grid-cols-3">
+                            {[
+                                { id: "starter" as const, label: "Starter", credits: 10_000 },
+                                { id: "growth" as const, label: "Growth", credits: 50_000 },
+                                { id: "scale" as const, label: "Scale", credits: 200_000 },
+                            ].map((pack) => (
+                            <div key={pack.id} className="flex flex-col gap-3 rounded-lg border border-border/50 bg-card/50 px-4 py-3">
+                                <div className="flex items-center gap-3">
                                 <Coins className="size-5 text-muted-foreground" />
                                 <div>
-                                    <p className="text-sm font-medium">1,000 Credits</p>
-                                    <p className="text-xs text-muted-foreground">Standard top-up</p>
+                                    <p className="text-sm font-medium">{pack.label}</p>
+                                    <p className="text-xs text-muted-foreground">{pack.credits.toLocaleString()} credits</p>
                                 </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => onrampMutation.mutate(pack.id)}
+                                    disabled={onrampMutation.isPending}
+                                >
+                                    Add package
+                                </Button>
                             </div>
-
-                            <Button
-                                size="lg"
-                                className="h-12 px-6"
-                                onClick={() => onrampMutation.mutate()}
-                                disabled={onrampMutation.isPending}
-                            >
-                                {onrampMutation.isPending ? (
-                                    <>
-                                        <Loader2 className="size-4 animate-spin" />
-                                        Processing...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="size-4" />
-                                        Add credits
-                                    </>
-                                )}
-                            </Button>
+                            ))}
                         </div>
 
                         {onrampMutation.isSuccess && (
                             <div className="flex items-start gap-2.5 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3.5 py-3 mt-4">
                                 <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
                                 <span>
-                                    1,000 credits added successfully! Your new balance: {onrampMutation.data?.credits?.toLocaleString() ?? "—"} credits.
+                                    Credits added successfully. Your new balance: {onrampMutation.data?.credits?.toLocaleString() ?? "—"} credits.
                                 </span>
                             </div>
                         )}

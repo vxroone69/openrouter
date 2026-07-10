@@ -35,7 +35,8 @@ export abstract class AuthService {
                 id
             },
             select: {
-                credits: true
+                credits: true,
+                plan: true,
             }
         })
     }

@@ -39,6 +39,7 @@ type PlaygroundModel = {
     id: string;
     name: string;
     slug: string;
+    minPlan: "free" | "pro";
     company: {
         id: string;
         name: string;
@@ -122,9 +123,19 @@ export function Playground() {
         },
     });
 
+    const userProfileQuery = useQuery({
+        queryKey: ["user-profile"],
+        queryFn: async () => {
+            const response = await elysiaClient.auth.profile.get();
+            if (response.error) throw new Error("Failed to fetch profile");
+            return response.data;
+        },
+    });
+
     const models = (modelsQuery.data?.models ?? []) as PlaygroundModel[];
     const apiKeys = (apiKeysQuery.data?.apiKeys ?? []) as PlaygroundApiKey[];
     const activeApiKeys = apiKeys.filter((key) => !key.disabled);
+    const userPlan = userProfileQuery.data?.plan ?? "free";
 
     useEffect(() => {
         if (!selectedModel) {
@@ -493,20 +504,30 @@ export function Playground() {
                                         <SelectValue placeholder="Select a model" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {models.map((model) => (
-                                            <SelectItem key={model.slug} value={model.slug}>
+                                        {models.map((model) => {
+                                            const locked = model.minPlan === "pro" && userPlan !== "pro";
+                                            return (
+                                            <SelectItem key={model.slug} value={model.slug} disabled={locked}>
                                                 <span className="flex items-center gap-2">
                                                     <span className="truncate font-medium">{model.name}</span>
                                                     <span className="text-muted-foreground">·</span>
                                                     <span className="truncate text-muted-foreground">{model.company.name}</span>
+                                                    {model.minPlan === "pro" && (
+                                                        <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                                                            Pro
+                                                        </span>
+                                                    )}
                                                 </span>
                                             </SelectItem>
-                                        ))}
+                                        )})}
                                     </SelectContent>
                                 </Select>
                                 {selectedModelData && (
                                     <p className="text-xs text-muted-foreground">
                                         {selectedModelData.slug}
+                                        {selectedModelData.minPlan === "pro" && userPlan !== "pro"
+                                            ? " · Upgrade required"
+                                            : ""}
                                     </p>
                                 )}
                             </div>
@@ -800,7 +821,8 @@ export function Playground() {
                                                 !prompt.trim() ||
                                                 !selectedModel ||
                                                 !selectedApiKey ||
-                                                selectedApiKey.disabled
+                                                selectedApiKey.disabled ||
+                                                (selectedModelData?.minPlan === "pro" && userPlan !== "pro")
                                             }
                                         >
                                             <Play className="size-3.5" />

@@ -30,6 +30,11 @@ function costInMicrodollars(
   return Math.max(0, Math.round(estimatedCost));
 }
 
+function creditsForCost(microdollars: number) {
+  const markup = Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25);
+  return Math.max(1, Math.ceil(microdollars * markup));
+}
+
 function estimateTokens(text: string) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
@@ -124,14 +129,14 @@ const app = new Elysia()
       output,
       inputTokensConsumed,
       outputTokensConsumed,
+      creditsToDeduct,
     }: {
       providerMappingId: number;
       output: string;
       inputTokensConsumed: number;
       outputTokensConsumed: number;
+      creditsToDeduct: number;
     }) => {
-      const totalTokensConsumed = totalTokens(inputTokensConsumed, outputTokensConsumed);
-
       try {
         await prisma.$transaction(
           async (tx) => {
@@ -141,7 +146,7 @@ const app = new Elysia()
               },
               data: {
                 creditsConsumed: {
-                  increment: totalTokensConsumed
+                  increment: creditsToDeduct
                 },
                 lastUsed: new Date()
               }
@@ -153,7 +158,7 @@ const app = new Elysia()
               },
               data: {
                 credits: {
-                  decrement: totalTokensConsumed
+                  decrement: creditsToDeduct
                 }
               }
             });
@@ -260,6 +265,19 @@ const app = new Elysia()
 
       return status(403, {
         message: "Unsupported Model"
+      });
+    }
+
+    if (modeldb.minPlan === "pro" && apiKeydb.user.plan !== "pro") {
+      logDeniedRequest({
+        status: "error",
+        errorType: "invalid_request",
+      });
+
+      return status(402, {
+        message: "This model requires the Pro plan",
+        requiredPlan: "pro",
+        currentPlan: apiKeydb.user.plan,
       });
     }
 
@@ -382,14 +400,6 @@ const app = new Elysia()
           }
         },
         onDone: (usage, output) => {
-          void persistUsage({
-            providerMappingId: providerResult.providerMappingId,
-            output,
-            inputTokensConsumed: usage.inputTokensConsumed,
-            outputTokensConsumed: usage.outputTokensConsumed,
-          });
-          persistMemory(output);
-
           const accounting = selectedProviderMapping
             ? buildCacheAccounting({
                 inputTokens: usage.inputTokensConsumed,
@@ -410,6 +420,15 @@ const app = new Elysia()
                 cachedSavings: 0,
                 costBreakdown: memoryLogDetails.costBreakdown,
               };
+
+          void persistUsage({
+            providerMappingId: providerResult.providerMappingId,
+            output,
+            inputTokensConsumed: usage.inputTokensConsumed,
+            outputTokensConsumed: usage.outputTokensConsumed,
+            creditsToDeduct: creditsForCost(accounting.totalCost),
+          });
+          persistMemory(output);
 
           scheduleRequestLog({
             ...logBase,
@@ -500,6 +519,7 @@ const app = new Elysia()
       output,
       inputTokensConsumed: response.inputTokensConsumed,
       outputTokensConsumed: response.outputTokensConsumed,
+      creditsToDeduct: creditsForCost(accounting.totalCost),
     });
     persistMemory(output);
 

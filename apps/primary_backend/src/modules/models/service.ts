@@ -13,6 +13,7 @@ export abstract class ModelsService {
             id: model.id.toString(),
             name: model.name,
             slug: model.slug,
+            minPlan: model.minPlan,
             company: {
                 id: model.company.id.toString(),
                 name: model.company.name,

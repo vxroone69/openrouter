@@ -40,7 +40,8 @@ export namespace AuthModel {
 
 
     export const profileResponseSchema = t.Object({
-        credits: t.Number()
+        credits: t.Number(),
+        plan: t.Union([t.Literal("free"), t.Literal("pro")])
     })
 
     export const profileResponseErrorSchema = t.Object({

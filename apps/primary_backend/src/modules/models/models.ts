@@ -6,6 +6,7 @@ export namespace ModelsModel {
             id: t.String(),
             name: t.String(),
             slug: t.String(),
+            minPlan: t.Union([t.Literal("free"), t.Literal("pro")]),
             company: t.Object({
                 id: t.String(),
                 name: t.String(),

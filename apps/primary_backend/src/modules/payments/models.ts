@@ -13,4 +13,18 @@ export namespace PaymentsModel {
     })
 
     export type onrampFailedResponseSchema = typeof onrampFailedResponseSchema.static;
+
+    export const purchaseCreditsSchema = t.Object({
+        packageId: t.Union([
+            t.Literal("starter"),
+            t.Literal("growth"),
+            t.Literal("scale"),
+        ])
+    })
+
+    export const upgradeResponseSchema = t.Object({
+        message: t.Literal("Upgrade successful"),
+        plan: t.Literal("pro"),
+        credits: t.Number()
+    })
 }

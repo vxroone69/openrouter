@@ -5,6 +5,7 @@ type SeedModel = {
   slug: string;
   name: string;
   companyName: string;
+  minPlan?: "free" | "pro";
   providers: {
     providerName: string;
     inputTokenCost: number;
@@ -34,6 +35,7 @@ const models: SeedModel[] = [
     slug: "google/gemini-3-flash-preview",
     name: "Gemini 3 Flash Preview",
     companyName: "Google",
+    minPlan: "pro",
     providers: [
       { providerName: "Google API", inputTokenCost: 0.5, outputTokenCost: 3.0 },
       { providerName: "Google Vertex", inputTokenCost: 0.5, outputTokenCost: 3.0 },
@@ -93,6 +95,7 @@ const models: SeedModel[] = [
     slug: "openai/gpt-5nano",
     name: "GPT-5 Nano",
     companyName: "OpenAI",
+    minPlan: "pro",
     providers: [
       { providerName: "OpenAI API", inputTokenCost: 0.1, outputTokenCost: 0.4 },
     ],
@@ -101,6 +104,7 @@ const models: SeedModel[] = [
     slug: "openai/gpt-4.1-mini",
     name: "GPT-4.1 Mini",
     companyName: "OpenAI",
+    minPlan: "pro",
     providers: [
       { providerName: "OpenAI API", inputTokenCost: 0.4, outputTokenCost: 1.6 },
     ],
@@ -109,6 +113,7 @@ const models: SeedModel[] = [
     slug: "anthropic/claude-3-5-haiku",
     name: "Claude 3.5 Haiku",
     companyName: "Anthropic",
+    minPlan: "pro",
     providers: [
       { providerName: "Claude API", inputTokenCost: 0.8, outputTokenCost: 4.0 },
     ],
@@ -145,11 +150,13 @@ async function ensureModel(model: SeedModel) {
     update: {
       name: model.name,
       companyId: company.id,
+      minPlan: model.minPlan ?? "free",
     },
     create: {
       slug: model.slug,
       name: model.name,
       companyId: company.id,
+      minPlan: model.minPlan ?? "free",
     },
   });
 }
