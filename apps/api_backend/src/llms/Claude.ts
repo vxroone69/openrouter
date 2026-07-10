@@ -1,8 +1,8 @@
-import { BaseLLM, LLMResponse } from "./Base";
+import { BaseLLM, LLMCallOptions, LLMResponse } from "./Base";
 import { Messages } from "../types";
 
 export class Claude extends BaseLLM {
-    static async chat(model: string, messages: Messages): Promise<LLMResponse> {
+    static async chat(model: string, messages: Messages, options: LLMCallOptions = {}): Promise<LLMResponse> {
         const apiKey = process.env.ANTHROPIC_API_KEY;
 
         if (!apiKey) {
@@ -15,10 +15,18 @@ export class Claude extends BaseLLM {
                 "content-type": "application/json",
                 "x-api-key": apiKey,
                 "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31",
             },
             body: JSON.stringify({
                 model,
                 max_tokens: 256,
+                ...(options.cacheableContext ? {
+                    system: [{
+                        type: "text",
+                        text: options.cacheableContext,
+                        cache_control: { type: "ephemeral" },
+                    }],
+                } : {}),
                 messages: messages.map((message) => ({
                     role: message.role,
                     content: message.content,
@@ -35,12 +43,16 @@ export class Claude extends BaseLLM {
             usage?: {
                 input_tokens?: number;
                 output_tokens?: number;
+                cache_creation_input_tokens?: number;
+                cache_read_input_tokens?: number;
             };
         };
 
         return {
             inputTokensConsumed: data.usage?.input_tokens ?? 0,
             outputTokensConsumed: data.usage?.output_tokens ?? 0,
+            cachedInputTokens: data.usage?.cache_read_input_tokens ?? 0,
+            cacheCreationInputTokens: data.usage?.cache_creation_input_tokens ?? 0,
             completions: {
                 choices: [{
                     message: {

@@ -1,5 +1,5 @@
 import { Messages } from "../types";
-import { BaseLLM, LLMResponse, LLMStreamUsage } from "./Base";
+import { BaseLLM, LLMCallOptions, LLMResponse, LLMStreamUsage } from "./Base";
 import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -7,18 +7,35 @@ const client = new OpenAI({
 });
 
 export class OpenAi extends BaseLLM {
-    static async chat(model: string, messages: Messages): Promise<LLMResponse> {
-        const response = await client.responses.create({
-            model,
-            input: messages.map((message) => ({
+    static async chat(model: string, messages: Messages, options: LLMCallOptions = {}): Promise<LLMResponse> {
+        const input = [
+            ...(options.cacheableContext ? [{
+                role: "system",
+                content: [{
+                    type: "input_text",
+                    text: options.cacheableContext,
+                    cache_control: { type: "ephemeral" },
+                }],
+            }] : []),
+            ...messages.map((message) => ({
                 role: message.role,
                 content: message.content
-            }))
+            })),
+        ];
+        const response = await client.responses.create({
+            model,
+            input: input as never,
         });
+        const usage = response.usage as typeof response.usage & {
+            input_tokens_details?: {
+                cached_tokens?: number;
+            };
+        };
 
         return {
             inputTokensConsumed: response.usage?.input_tokens ?? 0,
             outputTokensConsumed: response.usage?.output_tokens ?? 0,
+            cachedInputTokens: usage?.input_tokens_details?.cached_tokens ?? 0,
             completions: {
                 choices: [{
                     message: {
@@ -31,14 +48,26 @@ export class OpenAi extends BaseLLM {
 
     static async *chatStream(
         model: string,
-        messages: Messages
+        messages: Messages,
+        options: LLMCallOptions = {}
     ): AsyncGenerator<string, LLMStreamUsage> {
-        const stream = client.responses.stream({
-            model,
-            input: messages.map((message) => ({
+        const input = [
+            ...(options.cacheableContext ? [{
+                role: "system",
+                content: [{
+                    type: "input_text",
+                    text: options.cacheableContext,
+                    cache_control: { type: "ephemeral" },
+                }],
+            }] : []),
+            ...messages.map((message) => ({
                 role: message.role,
                 content: message.content
             })),
+        ];
+        const stream = client.responses.stream({
+            model,
+            input: input as never,
             max_output_tokens: 256,
         });
 
@@ -49,10 +78,16 @@ export class OpenAi extends BaseLLM {
         }
 
         const finalResponse = await stream.finalResponse();
+        const usage = finalResponse.usage as typeof finalResponse.usage & {
+            input_tokens_details?: {
+                cached_tokens?: number;
+            };
+        };
 
         return {
             inputTokensConsumed: finalResponse.usage?.input_tokens ?? 0,
             outputTokensConsumed: finalResponse.usage?.output_tokens ?? 0,
+            cachedInputTokens: usage?.input_tokens_details?.cached_tokens ?? 0,
         };
     }
 }

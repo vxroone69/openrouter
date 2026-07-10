@@ -124,6 +124,15 @@ model RequestLog {
   streaming       Boolean             @default(false)
   latencyMs       Int
   ttftMs          Int?
+  injectedMemories Json?
+  memoryCount     Int                 @default(0)
+  memoryInjected  Int                 @default(0)
+  cachedInputTokens Int               @default(0)
+  regularInputTokens Int              @default(0)
+  baseCost        Int                 @default(0)
+  memoryCost      Int                 @default(0)
+  cachedSavings   Int                 @default(0)
+  costBreakdown   Json?
   createdAt       DateTime            @default(now())
 
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -140,11 +149,18 @@ model Memory {
   apiKeyId Int?
   scope MemoryScope @default(user)
   content     String
+  embedding   Unsupported("vector")?
   source      String?
+  savedBy     MemorySavedBy @default(manual)
+  reasoning   String?
   confidence  Float       @default(0.5)
-  importance  Int         @default(1)
+  importance  Float       @default(0.5)
+  compressedFrom Json?
+  compressedIntoId Int?
+  isCompressed Boolean    @default(false)
   enabled     Boolean     @default(true)
   archived    Boolean     @default(false)
+  archivedAt  DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   lastUsedAt  DateTime?
@@ -153,8 +169,10 @@ model Memory {
   apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   @@index([userId, enabled, archived])
+  @@index([userId, archivedAt])
   @@index([userId, scope])
   @@index([userId, lastUsedAt])
+  @@index([userId, isCompressed])
 
 }
 
@@ -179,3 +197,9 @@ enum MemoryScope {
   semantic
 }
 
+enum MemorySavedBy {
+  manual
+  rule
+  llm
+  compression
+}

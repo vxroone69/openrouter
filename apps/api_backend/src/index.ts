@@ -6,9 +6,9 @@ import { checkRateLimit } from "./rateLimit/slidingWindow";
 import { tryProviderFallback, tryProviderFallbackStream } from "./routing/providerFallback";
 import { createOpenAIChatCompletionStream } from "./streaming/openaiChatCompletionStream";
 import { classifyRequestError, scheduleRequestLog } from "./logging/requestLog";
-import { retrieveMemoryForUser } from "./memory/retrieveMemory";
-import { injectMemoryIntoMessages } from "./memory/injectMemoryIntoMessages";
+import { markMemoriesUsed, retrieveMemoryForUser } from "./memory/retrieveMemory";
 import { writeMemoryFromChatTurn } from "./memory/writeMemory";
+import { buildMemoryPrefix } from "./memory/buildMemoryPrefix";
 
 function elapsedMs(startedAt: number) {
   return Math.max(0, Math.round(performance.now() - startedAt));
@@ -28,6 +28,58 @@ function costInMicrodollars(
   // That means the raw per-token cost is in microdollars, so we store microdollars here.
   const estimatedCost = inputTokensConsumed * inputTokenCost + outputTokensConsumed * outputTokenCost;
   return Math.max(0, Math.round(estimatedCost));
+}
+
+function estimateTokens(text: string) {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function buildCacheAccounting({
+  inputTokens,
+  outputTokens,
+  cachedInputTokens,
+  cacheCreationInputTokens,
+  memoryTokens,
+  inputTokenCost,
+  outputTokenCost,
+}: {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheCreationInputTokens: number;
+  memoryTokens: number;
+  inputTokenCost: number;
+  outputTokenCost: number;
+}) {
+  const regularInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+  const baseCost = costInMicrodollars(inputTokens, outputTokens, inputTokenCost, outputTokenCost);
+  const cachedDiscountRate = 0.9;
+  const cachedSavings = Math.round(cachedInputTokens * inputTokenCost * cachedDiscountRate);
+  const memoryCost = Math.round(Math.max(0, memoryTokens - cachedInputTokens) * inputTokenCost);
+  const totalCost = Math.max(0, baseCost - cachedSavings);
+
+  return {
+    totalCost,
+    regularInputTokens,
+    cachedInputTokens,
+    cacheCreationInputTokens,
+    baseCost,
+    memoryCost,
+    cachedSavings,
+    costBreakdown: {
+      inputTokens,
+      outputTokens,
+      memoryTokens,
+      cachedInputTokens,
+      cacheCreationInputTokens,
+      regularInputTokens,
+      inputTokenCost,
+      outputTokenCost,
+      totalIfNotCached: baseCost,
+      totalActualCost: totalCost,
+      cachedDiscountRate,
+    },
+  };
 }
 
 const app = new Elysia()
@@ -133,7 +185,7 @@ const app = new Elysia()
       void writeMemoryFromChatTurn({
         userId: apiKeydb.user.id,
         apiKeyId: apiKeydb.id,
-        messages: effectiveMessages,
+        messages: body.messages,
         assistantOutput,
         model,
       }).catch((error) => {
@@ -242,19 +294,53 @@ const app = new Elysia()
     }
 
     const memoryMode = typeof query.memory === "string" ? query.memory : "user";
+    const memoryLimit = Math.min(20, Math.max(0, Number(query.memoryLimit ?? 5)));
+    const memoryTokenBudget = Math.min(4000, Math.max(0, Number(query.memoryTokenBudget ?? 500)));
+    const lastUserMessage = [...body.messages].reverse().find((message) => message.role === "user");
     const memories = await retrieveMemoryForUser(
       apiKeydb.user.id,
       apiKeydb.id,
-      5,
-      memoryMode
+      memoryLimit,
+      memoryMode,
+      lastUserMessage?.content,
+      memoryTokenBudget
     );
-    const effectiveMessages = injectMemoryIntoMessages(body.messages, memories);
+    void markMemoriesUsed(memories.map((memory) => memory.id)).catch((error) => {
+      console.error("Failed to mark memories used:", error);
+    });
+    const memoryTokens = memories.reduce((sum, memory) => {
+      const rankedTokens = "estimatedTokens" in memory && typeof memory.estimatedTokens === "number"
+        ? memory.estimatedTokens
+        : estimateTokens(memory.content);
+      return sum + rankedTokens;
+    }, 0);
+    const memoryLogDetails = {
+      injectedMemories: memories.map((memory) => ({
+        memoryId: memory.id,
+        content: memory.content,
+        relevanceScore: "relevanceScore" in memory ? memory.relevanceScore : null,
+        factors: "factors" in memory ? memory.factors : null,
+        estimatedTokens: "estimatedTokens" in memory ? memory.estimatedTokens : null,
+        isCompressed: memory.isCompressed,
+      })),
+      memoryCount: memories.length,
+      memoryInjected: memories.length,
+      memoryCost: memoryTokens,
+      costBreakdown: {
+        memoryTokens,
+        memoryTokenBudget,
+        memoryMode,
+        cachingSupported: false,
+      },
+    };
+    const memoryContext = buildMemoryPrefix(memories);
 
     if (body.stream) {
       const providerResult = await tryProviderFallbackStream({
         providers,
         modelName: providerModelName,
-        messages: effectiveMessages,
+        messages: body.messages,
+        cacheableContext: memoryContext,
       });
 
       const selectedProviderMapping = providerMappingById.get(providerResult.ok ? providerResult.providerMappingId : -1);
@@ -304,14 +390,26 @@ const app = new Elysia()
           });
           persistMemory(output);
 
-          const responseCost = selectedProviderMapping
-            ? costInMicrodollars(
-                usage.inputTokensConsumed,
-                usage.outputTokensConsumed,
-                selectedProviderMapping.inputTokenCost,
-                selectedProviderMapping.outputTokenCost
-              )
-            : totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed);
+          const accounting = selectedProviderMapping
+            ? buildCacheAccounting({
+                inputTokens: usage.inputTokensConsumed,
+                outputTokens: usage.outputTokensConsumed,
+                cachedInputTokens: usage.cachedInputTokens ?? 0,
+                cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
+                memoryTokens,
+                inputTokenCost: selectedProviderMapping.inputTokenCost,
+                outputTokenCost: selectedProviderMapping.outputTokenCost,
+              })
+            : {
+                totalCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+                regularInputTokens: usage.inputTokensConsumed,
+                cachedInputTokens: usage.cachedInputTokens ?? 0,
+                cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
+                baseCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+                memoryCost: memoryTokens,
+                cachedSavings: 0,
+                costBreakdown: memoryLogDetails.costBreakdown,
+              };
 
           scheduleRequestLog({
             ...logBase,
@@ -323,10 +421,17 @@ const app = new Elysia()
             promptTokens: usage.inputTokensConsumed,
             completionTokens: usage.outputTokensConsumed,
             totalTokens: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
-            cost: responseCost,
+            cost: accounting.totalCost,
             streaming: true,
             latencyMs: elapsedMs(requestStartedAt),
             ttftMs,
+            ...memoryLogDetails,
+            cachedInputTokens: accounting.cachedInputTokens,
+            regularInputTokens: accounting.regularInputTokens,
+            baseCost: accounting.baseCost,
+            memoryCost: accounting.memoryCost,
+            cachedSavings: accounting.cachedSavings,
+            costBreakdown: accounting.costBreakdown,
           });
         },
       });
@@ -335,7 +440,8 @@ const app = new Elysia()
     const providerResult = await tryProviderFallback({
       providers,
       modelName: providerModelName,
-      messages: effectiveMessages,
+      messages: body.messages,
+      cacheableContext: memoryContext,
     });
 
     if (!providerResult.ok) {
@@ -365,14 +471,26 @@ const app = new Elysia()
 
     const response = providerResult.response;
     const selectedProviderMapping = providerMappingById.get(providerResult.providerMappingId);
-    const responseCost = selectedProviderMapping
-      ? costInMicrodollars(
-          response.inputTokensConsumed,
-          response.outputTokensConsumed,
-          selectedProviderMapping.inputTokenCost,
-          selectedProviderMapping.outputTokenCost
-        )
-      : totalTokens(response.inputTokensConsumed, response.outputTokensConsumed);
+    const accounting = selectedProviderMapping
+      ? buildCacheAccounting({
+          inputTokens: response.inputTokensConsumed,
+          outputTokens: response.outputTokensConsumed,
+          cachedInputTokens: response.cachedInputTokens ?? 0,
+          cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
+          memoryTokens,
+          inputTokenCost: selectedProviderMapping.inputTokenCost,
+          outputTokenCost: selectedProviderMapping.outputTokenCost,
+        })
+      : {
+          totalCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+          regularInputTokens: response.inputTokensConsumed,
+          cachedInputTokens: response.cachedInputTokens ?? 0,
+          cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
+          baseCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+          memoryCost: memoryTokens,
+          cachedSavings: 0,
+          costBreakdown: memoryLogDetails.costBreakdown,
+        };
     const output = response.completions.choices
       .map((choice) => choice.message.content)
       .join("\n");
@@ -395,10 +513,17 @@ const app = new Elysia()
       promptTokens: response.inputTokensConsumed,
       completionTokens: response.outputTokensConsumed,
       totalTokens: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
-      cost: responseCost,
+      cost: accounting.totalCost,
       streaming: false,
       latencyMs: elapsedMs(requestStartedAt),
       ttftMs: null,
+      ...memoryLogDetails,
+      cachedInputTokens: accounting.cachedInputTokens,
+      regularInputTokens: accounting.regularInputTokens,
+      baseCost: accounting.baseCost,
+      memoryCost: accounting.memoryCost,
+      cachedSavings: accounting.cachedSavings,
+      costBreakdown: accounting.costBreakdown,
     });
 
     return response;
@@ -416,9 +541,12 @@ const app = new Elysia()
     }),
     query: t.Object({
       memory: t.Optional(t.Union([
+        t.Literal("none"),
         t.Literal("user"),
         t.Literal("api_key"),
       ])),
+      memoryLimit: t.Optional(t.String()),
+      memoryTokenBudget: t.Optional(t.String()),
     })
   })
   .listen(3002);

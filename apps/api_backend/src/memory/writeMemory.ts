@@ -3,9 +3,11 @@ import type { Messages } from "../types";
 import { Groq } from "../llms/Groq";
 import { OpenAi } from "../llms/OpenAI";
 import { Gemini } from "../llms/Google";
+import { generateMemoryEmbedding, toPgVector } from "./embeddings";
 
 type MemoryScope = "conversation" | "user" | "project" | "semantic";
 type MemoryOwner = "user" | "api_key";
+type MemorySavedBy = "rule" | "llm";
 
 type MemoryCandidate = {
   content: string;
@@ -13,6 +15,8 @@ type MemoryCandidate = {
   owner: MemoryOwner;
   confidence: number;
   importance: number;
+  savedBy: MemorySavedBy;
+  reasoning: string;
 };
 
 type MemoryClassification = {
@@ -23,6 +27,22 @@ type MemoryClassification = {
   confidence: number;
   importance: number;
 };
+
+function parseClassifierJson(raw: string): Partial<MemoryClassification> | null {
+  const trimmed = raw.trim();
+  const withoutFence = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const jsonStart = withoutFence.indexOf("{");
+  const jsonEnd = withoutFence.lastIndexOf("}");
+
+  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+    return null;
+  }
+
+  return JSON.parse(withoutFence.slice(jsonStart, jsonEnd + 1)) as Partial<MemoryClassification>;
+}
 
 function normalizeMemoryText(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -113,7 +133,9 @@ function buildCandidateFromRules(text: string): MemoryCandidate | null {
       scope: "user",
       owner: "user",
       confidence: 0.68,
-      importance: 2,
+      importance: 0.4,
+      savedBy: "rule",
+      reasoning: "Matched an explicit user preference or durable personal fact pattern.",
     };
   }
 
@@ -122,7 +144,9 @@ function buildCandidateFromRules(text: string): MemoryCandidate | null {
     scope: "conversation",
     owner: "api_key",
     confidence: 0.72,
-    importance: 2,
+    importance: 0.4,
+    savedBy: "rule",
+    reasoning: "Matched an explicit app, project, key, or environment-specific memory hint.",
   };
 }
 
@@ -146,18 +170,25 @@ async function classifyWithLLM(text: string): Promise<MemoryClassification | nul
   ];
 
   const providers = [
-    async () => {
-      const model = process.env.MEMORY_CLASSIFIER_MODEL ?? "llama-3.1-8b-instant";
-      return Groq.chat(model, classifierPrompt);
-    },
-    async () => {
-      const model = process.env.MEMORY_CLASSIFIER_MODEL ?? "gpt-4.1-mini";
-      return OpenAi.chat(model, classifierPrompt);
-    },
-    async () => {
-      const model = process.env.MEMORY_CLASSIFIER_MODEL ?? "gemini-2.5-flash";
-      return Gemini.chat(model, classifierPrompt);
-    },
+    ...(process.env.GROQ_API_KEY ? [
+      async () => {
+        const model = process.env.GROQ_MEMORY_CLASSIFIER_MODEL ?? process.env.MEMORY_CLASSIFIER_MODEL ?? "llama-3.1-8b-instant";
+        return Groq.chat(model, classifierPrompt);
+      },
+    ] : []),
+    ...(process.env.OPENAI_API_KEY ? [
+      async () => {
+        const model = process.env.OPENAI_MEMORY_CLASSIFIER_MODEL ?? process.env.MEMORY_CLASSIFIER_MODEL ?? "gpt-4.1-mini";
+        return OpenAi.chat(model, classifierPrompt);
+      },
+    ] : []),
+    ...(process.env.GOOGLE_API_KEY ? [
+      ...[
+        process.env.GOOGLE_MEMORY_CLASSIFIER_MODEL,
+      ]
+        .filter((model): model is string => Boolean(model))
+        .map((model) => async () => Gemini.chat(model, classifierPrompt)),
+    ] : []),
   ];
 
   let lastError: unknown = null;
@@ -167,8 +198,9 @@ async function classifyWithLLM(text: string): Promise<MemoryClassification | nul
       const response = await provider();
       const raw = response.completions.choices[0]?.message.content?.trim() ?? "";
 
-      const parsed = JSON.parse(raw) as Partial<MemoryClassification>;
+      const parsed = parseClassifierJson(raw);
       if (
+        !parsed ||
         typeof parsed.shouldStore !== "boolean" ||
         typeof parsed.content !== "string" ||
         (parsed.owner !== "user" && parsed.owner !== "api_key") ||
@@ -177,7 +209,8 @@ async function classifyWithLLM(text: string): Promise<MemoryClassification | nul
           parsed.scope !== "project" &&
           parsed.scope !== "semantic")
       ) {
-        return null;
+        lastError = new Error(`Invalid memory classifier response: ${raw}`);
+        continue;
       }
 
       if (!parsed.shouldStore || !parsed.content.trim()) {
@@ -235,8 +268,29 @@ async function classifyMemory(messages: Messages): Promise<MemoryCandidate | nul
     scope: llmCandidate.scope,
     owner: llmCandidate.owner,
     confidence: llmCandidate.confidence,
-    importance: llmCandidate.importance,
+    importance: Math.min(1, Math.max(0, llmCandidate.importance / 5)),
+    savedBy: "llm",
+    reasoning: "LLM classifier identified durable information worth recalling.",
   };
+}
+
+async function persistEmbedding(memoryId: number, content: string) {
+  try {
+    const embedding = await generateMemoryEmbedding(content);
+
+    if (!embedding) {
+      return;
+    }
+
+    const vector = toPgVector(embedding);
+    await prisma.$executeRawUnsafe(`
+      UPDATE "Memory"
+      SET "embedding" = '${vector}'::vector
+      WHERE "id" = ${memoryId}
+    `);
+  } catch (error) {
+    console.error("Failed to persist memory embedding:", error);
+  }
 }
 
 export async function writeMemoryFromChatTurn(input: {
@@ -275,7 +329,7 @@ export async function writeMemoryFromChatTurn(input: {
       data: {
         lastUsedAt: new Date(),
         confidence: Math.min(1, candidate.confidence + 0.05),
-        importance: Math.min(5, candidate.importance + 1),
+        importance: Math.min(1, candidate.importance + 0.1),
       },
     });
 
@@ -289,11 +343,15 @@ export async function writeMemoryFromChatTurn(input: {
       scope: candidate.scope,
       content: candidate.content,
       source: `chat:${input.model}`,
+      savedBy: candidate.savedBy,
+      reasoning: candidate.reasoning,
       confidence: candidate.confidence,
       importance: candidate.importance,
       lastUsedAt: new Date(),
     },
   });
+
+  await persistEmbedding(memory.id, memory.content);
 
   return memory.id;
 }

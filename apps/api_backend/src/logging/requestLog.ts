@@ -19,6 +19,15 @@ export type RequestLogInput = {
   streaming: boolean;
   latencyMs: number;
   ttftMs?: number | null;
+  injectedMemories?: unknown;
+  memoryCount?: number;
+  memoryInjected?: number;
+  cachedInputTokens?: number;
+  regularInputTokens?: number;
+  baseCost?: number;
+  memoryCost?: number;
+  cachedSavings?: number;
+  costBreakdown?: unknown;
 };
 
 export function classifyRequestError(message: string): RequestLogErrorType {
@@ -88,6 +97,15 @@ export function scheduleRequestLog(input: RequestLogInput) {
         streaming: input.streaming,
         latencyMs: input.latencyMs,
         ttftMs: input.ttftMs ?? null,
+        injectedMemories: input.injectedMemories ?? undefined,
+        memoryCount: input.memoryCount ?? 0,
+        memoryInjected: input.memoryInjected ?? 0,
+        cachedInputTokens: input.cachedInputTokens ?? 0,
+        regularInputTokens: input.regularInputTokens ?? input.promptTokens,
+        baseCost: input.baseCost ?? input.cost,
+        memoryCost: input.memoryCost ?? 0,
+        cachedSavings: input.cachedSavings ?? 0,
+        costBreakdown: input.costBreakdown ?? undefined,
       },
     })
     .catch((error) => {

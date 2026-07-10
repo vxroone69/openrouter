@@ -9,22 +9,31 @@ export type LLMResponse = {
         }[]
     },
     inputTokensConsumed: number,
-    outputTokensConsumed: number
+    outputTokensConsumed: number,
+    cachedInputTokens?: number,
+    cacheCreationInputTokens?: number,
 };
 
 export type LLMStreamUsage = {
     inputTokensConsumed: number;
     outputTokensConsumed: number;
+    cachedInputTokens?: number;
+    cacheCreationInputTokens?: number;
+};
+
+export type LLMCallOptions = {
+    cacheableContext?: string | null;
 };
 
 export class BaseLLM {
-    static async chat(model: string, messages: Messages): Promise<LLMResponse> {
+    static async chat(model: string, messages: Messages, options?: LLMCallOptions): Promise<LLMResponse> {
         throw new Error("Not implemented chat function");
     }
 
     static async *chatStream(
         model: string,
-        messages: Messages
+        messages: Messages,
+        options?: LLMCallOptions
     ): AsyncGenerator<string, LLMStreamUsage> {
         throw new Error("Not implemented stream function");
     }

@@ -1,6 +1,6 @@
 // apps/api_backend/src/routing/providerFallback.ts
 import { Messages } from "../types";
-import { LLMResponse, LLMStreamUsage } from "../llms/Base";
+import { LLMCallOptions, LLMResponse, LLMStreamUsage } from "../llms/Base";
 import { Gemini } from "../llms/Google";
 import { OpenAi } from "../llms/OpenAI";
 import { Claude } from "../llms/Claude";
@@ -51,14 +51,37 @@ type StreamProviderFallbackResult =
         }[];
     };
 
+function supportsStructuredCache(providerName: string) {
+    return providerName === "OpenAI API" || providerName === "Claude API";
+}
+
+function withPlainMemoryContext(messages: Messages, cacheableContext?: string | null): Messages {
+    if (!cacheableContext) return messages;
+
+    if (messages.length === 0) {
+        return [{ role: "user", content: cacheableContext }];
+    }
+
+    const [firstMessage, ...rest] = messages;
+    return [
+        {
+            ...firstMessage,
+            content: `${cacheableContext}\n\n${firstMessage.content}`,
+        },
+        ...rest,
+    ];
+}
+
 async function callProvider({
     providerName,
     modelName,
     messages,
+    options,
 }: {
     providerName: string,
     modelName: string,
     messages: Messages,
+    options?: LLMCallOptions,
 }): Promise<LLMResponse> {
     if (providerName == "Google API" || providerName == "Google Vertex") {
         return Gemini.chat(modelName, messages);
@@ -77,11 +100,11 @@ async function callProvider({
     }
 
     if (providerName === "OpenAI API") {
-        return OpenAi.chat(modelName, messages);
+        return OpenAi.chat(modelName, messages, options);
     }
 
     if (providerName === "Claude API") {
-        return Claude.chat(modelName, messages);
+        return Claude.chat(modelName, messages, options);
     }
 
     throw new Error(`Unsupported Provider: ${providerName}`);
@@ -91,10 +114,12 @@ async function callProviderStream({
     providerName,
     modelName,
     messages,
+    options,
 }: {
     providerName: string,
     modelName: string,
     messages: Messages,
+    options?: LLMCallOptions,
 }): Promise<AsyncGenerator<string, LLMStreamUsage>> {
     if (providerName === "Google API" || providerName === "Google Vertex") {
         return Gemini.chatStream(modelName, messages);
@@ -113,7 +138,7 @@ async function callProviderStream({
     }
 
     if (providerName === "OpenAI API") {
-        return OpenAi.chatStream(modelName, messages);
+        return OpenAi.chatStream(modelName, messages, options);
     }
 
     throw new Error(`Streaming not implemented for provider: ${providerName}`);
@@ -123,10 +148,12 @@ export async function tryProviderFallback({
     providers,
     modelName,
     messages,
+    cacheableContext,
 }: {
     providers: ProviderMapping[],
     modelName: string,
-    messages: Messages
+    messages: Messages,
+    cacheableContext?: string | null,
 }): Promise<ProviderFallbackResult> {
     const errors: { providerName: string, message: string }[] = [];
 
@@ -136,10 +163,16 @@ export async function tryProviderFallback({
         attemptedCount += 1;
 
         try {
+            const providerMessages = supportsStructuredCache(providerName)
+                ? messages
+                : withPlainMemoryContext(messages, cacheableContext);
             const response = await callProvider({
                 providerName,
                 modelName,
-                messages,
+                messages: providerMessages,
+                options: supportsStructuredCache(providerName)
+                    ? { cacheableContext }
+                    : undefined,
             });
 
             return {
@@ -171,10 +204,12 @@ export async function tryProviderFallbackStream({
     providers,
     modelName,
     messages,
+    cacheableContext,
 }: {
     providers: ProviderMapping[],
     modelName: string,
-    messages: Messages
+    messages: Messages,
+    cacheableContext?: string | null,
 }): Promise<StreamProviderFallbackResult> {
     const errors: { providerName: string, message: string }[] = [];
 
@@ -184,10 +219,16 @@ export async function tryProviderFallbackStream({
         attemptedCount += 1;
 
         try {
+            const providerMessages = supportsStructuredCache(providerName)
+                ? messages
+                : withPlainMemoryContext(messages, cacheableContext);
             const stream = await callProviderStream({
                 providerName,
                 modelName,
-                messages,
+                messages: providerMessages,
+                options: supportsStructuredCache(providerName)
+                    ? { cacheableContext }
+                    : undefined,
             });
 
             const iterator = stream[Symbol.asyncIterator]();

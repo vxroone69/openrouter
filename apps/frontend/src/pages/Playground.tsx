@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
     AlertCircle,
     ArrowUpRight,
@@ -54,12 +55,18 @@ type PlaygroundApiKey = {
     disabled: boolean;
 };
 
-type MemoryMode = "user" | "api_key";
+type MemoryMode = "none" | "user" | "api_key";
 
 const starterPrompts = [
     "Explain streaming responses in one short paragraph.",
     "Write a two-line summary of why model switching is useful.",
     "Give me a fast answer to 1 + 2 and show me the response as it streams.",
+];
+
+const defaultModelSlugs = [
+    "groq/llama-3.1-8b-instant",
+    "groq/llama-3.1-8b-instruct",
+    "cloudflare/llama-3.1-8b-instruct",
 ];
 
 function maskKey(apiKey: string) {
@@ -91,6 +98,9 @@ export function Playground() {
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [saveError, setSaveError] = useState<string | null>(null);
     const [memoryMode, setMemoryMode] = useState<MemoryMode>("user");
+    const [memoryLimit, setMemoryLimit] = useState("5");
+    const [memoryTokenBudget, setMemoryTokenBudget] = useState("500");
+    const [showMemoryDebug, setShowMemoryDebug] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -117,9 +127,17 @@ export function Playground() {
     const activeApiKeys = apiKeys.filter((key) => !key.disabled);
 
     useEffect(() => {
-        const firstModel = models[0];
-        if (!selectedModel && firstModel) {
-            setSelectedModel(firstModel.slug);
+        if (!selectedModel) {
+            const preferredModel =
+                defaultModelSlugs
+                    .map((slug) => models.find((model) => model.slug === slug))
+                    .find(Boolean) ??
+                models.find((model) => model.slug.includes("llama-3.1-8b")) ??
+                models[0];
+
+            if (preferredModel) {
+                setSelectedModel(preferredModel.slug);
+            }
         }
     }, [models, selectedModel]);
 
@@ -237,6 +255,8 @@ export function Playground() {
         try {
             const url = new URL("http://localhost:3002/api/v1/chat/completions");
             url.searchParams.set("memory", memoryMode);
+            url.searchParams.set("memoryLimit", memoryLimit);
+            url.searchParams.set("memoryTokenBudget", memoryTokenBudget);
 
             const response = await fetch(url.toString(), {
                 method: "POST",
@@ -414,10 +434,10 @@ export function Playground() {
 
             const response = await elysiaClient.memory.post({
                 content: lastTurnPrompt.trim(),
-                scope: "user",
+                scope: memoryMode === "api_key" ? "project" : "user",
                 source: "playground/manual",
-                importance: 2,
-                apiKeyId: selectedApiKey.id,
+                importance: 0.5,
+                apiKeyId: memoryMode === "api_key" ? selectedApiKey.id : undefined,
             });
 
             if (response.error) {
@@ -498,6 +518,7 @@ export function Playground() {
                                         <SelectValue placeholder="Select memory mode" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="none">No memory</SelectItem>
                                         <SelectItem value="user">User memories only</SelectItem>
                                         <SelectItem value="api_key">API key memories only</SelectItem>
                                     </SelectContent>
@@ -506,6 +527,42 @@ export function Playground() {
                                     Controls which saved memories are injected into the request.
                                 </p>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="memory-limit">Max memories</Label>
+                                    <Input
+                                        id="memory-limit"
+                                        type="number"
+                                        min={0}
+                                        max={20}
+                                        value={memoryLimit}
+                                        onChange={(event) => setMemoryLimit(event.target.value)}
+                                        className="bg-black/20"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="memory-budget">Token budget</Label>
+                                    <Input
+                                        id="memory-budget"
+                                        type="number"
+                                        min={0}
+                                        max={4000}
+                                        value={memoryTokenBudget}
+                                        onChange={(event) => setMemoryTokenBudget(event.target.value)}
+                                        className="bg-black/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <label className="flex items-center gap-2 rounded-md border border-border/50 bg-black/20 px-3 py-2 text-xs text-muted-foreground">
+                                <input
+                                    type="checkbox"
+                                    checked={showMemoryDebug}
+                                    onChange={(event) => setShowMemoryDebug(event.target.checked)}
+                                />
+                                Show memory debug controls
+                            </label>
 
                             <div className="space-y-2">
                                 <Label htmlFor="api-key-select">API key</Label>
@@ -564,6 +621,19 @@ export function Playground() {
                                     </p>
                                 </div>
                             </div>
+
+                            {showMemoryDebug && (
+                                <div className="rounded-md border border-border/50 bg-black/20 p-3 text-xs text-muted-foreground">
+                                    <p className="font-medium text-foreground">Memory request</p>
+                                    <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px]">
+{JSON.stringify({
+    memory: memoryMode,
+    memoryLimit,
+    memoryTokenBudget,
+}, null, 2)}
+                                    </pre>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
