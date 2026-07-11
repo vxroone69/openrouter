@@ -33,8 +33,8 @@ export namespace ModelsModel {
             providerId: t.String(),
             providerName: t.String(),
             providerWebsite: t.String(),
-            inputTokenCost: t.Number(),
-            outputTokenCost: t.Number()
+            inputTokenCostNanoDollars: t.Number(),
+            outputTokenCostNanoDollars: t.Number()
         }))
     })
 

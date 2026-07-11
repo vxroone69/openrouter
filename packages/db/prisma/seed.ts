@@ -8,8 +8,8 @@ type SeedModel = {
   minPlan?: "free" | "pro";
   providers: {
     providerName: string;
-    inputTokenCost: number;
-    outputTokenCost: number;
+    inputTokenCostNanoDollars: number;
+    outputTokenCostNanoDollars: number;
   }[];
 };
 
@@ -37,8 +37,8 @@ const models: SeedModel[] = [
     companyName: "Google",
     minPlan: "pro",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0.5, outputTokenCost: 3.0 },
-      { providerName: "Google Vertex", inputTokenCost: 0.5, outputTokenCost: 3.0 },
+      { providerName: "Google API", inputTokenCostNanoDollars: 500, outputTokenCostNanoDollars: 3000 },
+      { providerName: "Google Vertex", inputTokenCostNanoDollars: 500, outputTokenCostNanoDollars: 3000 },
     ],
   },
   {
@@ -46,8 +46,8 @@ const models: SeedModel[] = [
     name: "Gemini 2.5 Flash Lite",
     companyName: "Google",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0.1, outputTokenCost: 0.4 },
-      { providerName: "Google Vertex", inputTokenCost: 0.1, outputTokenCost: 0.4 },
+      { providerName: "Google API", inputTokenCostNanoDollars: 100, outputTokenCostNanoDollars: 400 },
+      { providerName: "Google Vertex", inputTokenCostNanoDollars: 100, outputTokenCostNanoDollars: 400 },
     ],
   },
   {
@@ -55,8 +55,8 @@ const models: SeedModel[] = [
     name: "Gemini 2.5 Flash",
     companyName: "Google",
     providers: [
-      { providerName: "Google API", inputTokenCost: 0.3, outputTokenCost: 2.5 },
-      { providerName: "Google Vertex", inputTokenCost: 0.3, outputTokenCost: 2.5 },
+      { providerName: "Google API", inputTokenCostNanoDollars: 300, outputTokenCostNanoDollars: 2500 },
+      { providerName: "Google Vertex", inputTokenCostNanoDollars: 300, outputTokenCostNanoDollars: 2500 },
     ],
   },
   {
@@ -64,7 +64,7 @@ const models: SeedModel[] = [
     name: "Llama 3.1 8B Instant",
     companyName: "Groq",
     providers: [
-      { providerName: "Groq API", inputTokenCost: 0.05, outputTokenCost: 0.08 },
+      { providerName: "Groq API", inputTokenCostNanoDollars: 50, outputTokenCostNanoDollars: 80 },
     ],
   },
   {
@@ -74,8 +74,8 @@ const models: SeedModel[] = [
     providers: [
       {
         providerName: "Cloudflare Workers AI",
-        inputTokenCost: 0.2,
-        outputTokenCost: 0.2,
+        inputTokenCostNanoDollars: 200,
+        outputTokenCostNanoDollars: 200,
       },
     ],
   },
@@ -86,8 +86,8 @@ const models: SeedModel[] = [
     providers: [
       {
         providerName: "Cloudflare Workers AI",
-        inputTokenCost: 0.2,
-        outputTokenCost: 0.2,
+        inputTokenCostNanoDollars: 200,
+        outputTokenCostNanoDollars: 200,
       },
     ],
   },
@@ -97,7 +97,7 @@ const models: SeedModel[] = [
     companyName: "OpenAI",
     minPlan: "pro",
     providers: [
-      { providerName: "OpenAI API", inputTokenCost: 0.1, outputTokenCost: 0.4 },
+      { providerName: "OpenAI API", inputTokenCostNanoDollars: 100, outputTokenCostNanoDollars: 400 },
     ],
   },
   {
@@ -106,7 +106,7 @@ const models: SeedModel[] = [
     companyName: "OpenAI",
     minPlan: "pro",
     providers: [
-      { providerName: "OpenAI API", inputTokenCost: 0.4, outputTokenCost: 1.6 },
+      { providerName: "OpenAI API", inputTokenCostNanoDollars: 400, outputTokenCostNanoDollars: 1600 },
     ],
   },
   {
@@ -115,7 +115,7 @@ const models: SeedModel[] = [
     companyName: "Anthropic",
     minPlan: "pro",
     providers: [
-      { providerName: "Claude API", inputTokenCost: 0.8, outputTokenCost: 4.0 },
+      { providerName: "Claude API", inputTokenCostNanoDollars: 800, outputTokenCostNanoDollars: 4000 },
     ],
   },
 ];
@@ -161,7 +161,7 @@ async function ensureModel(model: SeedModel) {
   });
 }
 
-async function ensureMapping(modelId: number, providerId: number, inputTokenCost: number, outputTokenCost: number) {
+async function ensureMapping(modelId: number, providerId: number, inputTokenCostNanoDollars: number, outputTokenCostNanoDollars: number) {
   const existingMapping = await prisma.modelProviderMapping.findFirst({
     where: {
       modelId,
@@ -173,8 +173,8 @@ async function ensureMapping(modelId: number, providerId: number, inputTokenCost
     return prisma.modelProviderMapping.update({
       where: { id: existingMapping.id },
       data: {
-        inputTokenCost,
-        outputTokenCost,
+        inputTokenCostNanoDollars,
+        outputTokenCostNanoDollars,
       },
     });
   }
@@ -183,8 +183,8 @@ async function ensureMapping(modelId: number, providerId: number, inputTokenCost
     data: {
       modelId,
       providerId,
-      inputTokenCost,
-      outputTokenCost,
+      inputTokenCostNanoDollars,
+      outputTokenCostNanoDollars,
     },
   });
 }
@@ -210,7 +210,7 @@ async function main() {
         throw new Error(`Missing provider for mapping seed: ${mapping.providerName}`);
       }
 
-      await ensureMapping(modelRow.id, providerRow.id, mapping.inputTokenCost, mapping.outputTokenCost);
+      await ensureMapping(modelRow.id, providerRow.id, mapping.inputTokenCostNanoDollars, mapping.outputTokenCostNanoDollars);
     }
   }
 

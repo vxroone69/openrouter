@@ -47,8 +47,8 @@ export abstract class ModelsService {
             providerId: mapping.provider.id.toString(),
             providerName: mapping.provider.name,
             providerWebsite: mapping.provider.website,
-            inputTokenCost: mapping.inputTokenCost,
-            outputTokenCost: mapping.outputTokenCost
+            inputTokenCostNanoDollars: mapping.inputTokenCostNanoDollars,
+            outputTokenCostNanoDollars: mapping.outputTokenCostNanoDollars
         }))
     }
 }

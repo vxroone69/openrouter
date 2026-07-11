@@ -18,21 +18,22 @@ function totalTokens(inputTokensConsumed: number, outputTokensConsumed: number) 
   return inputTokensConsumed + outputTokensConsumed;
 }
 
-function costInMicrodollars(
+function providerCostNanoDollars(
   inputTokensConsumed: number,
   outputTokensConsumed: number,
-  inputTokenCost: number,
-  outputTokenCost: number
+  inputTokenCostNanoDollars: number,
+  outputTokenCostNanoDollars: number
 ) {
-  // The seed values are priced like "$ per 1M tokens".
-  // That means the raw per-token cost is in microdollars, so we store microdollars here.
-  const estimatedCost = inputTokensConsumed * inputTokenCost + outputTokensConsumed * outputTokenCost;
+  const estimatedCost =
+    inputTokensConsumed * inputTokenCostNanoDollars +
+    outputTokensConsumed * outputTokenCostNanoDollars;
   return Math.max(0, Math.round(estimatedCost));
 }
 
-function creditsForCost(microdollars: number) {
+function creditsForCost(providerCostNanoDollarsValue: number) {
   const markup = Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25);
-  return Math.max(1, Math.ceil(microdollars * markup));
+  const nanoDollarsPerCredit = Number(process.env.NANO_DOLLARS_PER_CREDIT ?? 1000);
+  return Math.max(1, Math.ceil((providerCostNanoDollarsValue / nanoDollarsPerCredit) * markup));
 }
 
 function estimateTokens(text: string) {
@@ -45,26 +46,28 @@ function buildCacheAccounting({
   cachedInputTokens,
   cacheCreationInputTokens,
   memoryTokens,
-  inputTokenCost,
-  outputTokenCost,
+  inputTokenCostNanoDollars,
+  outputTokenCostNanoDollars,
 }: {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
   cacheCreationInputTokens: number;
   memoryTokens: number;
-  inputTokenCost: number;
-  outputTokenCost: number;
+  inputTokenCostNanoDollars: number;
+  outputTokenCostNanoDollars: number;
 }) {
   const regularInputTokens = Math.max(0, inputTokens - cachedInputTokens);
-  const baseCost = costInMicrodollars(inputTokens, outputTokens, inputTokenCost, outputTokenCost);
+  const baseCost = providerCostNanoDollars(inputTokens, outputTokens, inputTokenCostNanoDollars, outputTokenCostNanoDollars);
   const cachedDiscountRate = 0.9;
-  const cachedSavings = Math.round(cachedInputTokens * inputTokenCost * cachedDiscountRate);
-  const memoryCost = Math.round(Math.max(0, memoryTokens - cachedInputTokens) * inputTokenCost);
+  const cachedSavings = Math.round(cachedInputTokens * inputTokenCostNanoDollars * cachedDiscountRate);
+  const memoryCost = Math.round(Math.max(0, memoryTokens - cachedInputTokens) * inputTokenCostNanoDollars);
   const totalCost = Math.max(0, baseCost - cachedSavings);
+  const creditsToDeduct = creditsForCost(totalCost);
 
   return {
     totalCost,
+    creditsToDeduct,
     regularInputTokens,
     cachedInputTokens,
     cacheCreationInputTokens,
@@ -78,8 +81,11 @@ function buildCacheAccounting({
       cachedInputTokens,
       cacheCreationInputTokens,
       regularInputTokens,
-      inputTokenCost,
-      outputTokenCost,
+      inputTokenCostNanoDollars,
+      outputTokenCostNanoDollars,
+      nanoDollarsPerCredit: Number(process.env.NANO_DOLLARS_PER_CREDIT ?? 1000),
+      creditMarkupMultiplier: Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25),
+      creditsToDeduct,
       totalIfNotCached: baseCost,
       totalActualCost: totalCost,
       cachedDiscountRate,
@@ -407,11 +413,12 @@ const app = new Elysia()
                 cachedInputTokens: usage.cachedInputTokens ?? 0,
                 cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
                 memoryTokens,
-                inputTokenCost: selectedProviderMapping.inputTokenCost,
-                outputTokenCost: selectedProviderMapping.outputTokenCost,
+                inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
+                outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
               })
             : {
                 totalCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+                creditsToDeduct: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
                 regularInputTokens: usage.inputTokensConsumed,
                 cachedInputTokens: usage.cachedInputTokens ?? 0,
                 cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
@@ -426,7 +433,7 @@ const app = new Elysia()
             output,
             inputTokensConsumed: usage.inputTokensConsumed,
             outputTokensConsumed: usage.outputTokensConsumed,
-            creditsToDeduct: creditsForCost(accounting.totalCost),
+            creditsToDeduct: accounting.creditsToDeduct,
           });
           persistMemory(output);
 
@@ -497,11 +504,12 @@ const app = new Elysia()
           cachedInputTokens: response.cachedInputTokens ?? 0,
           cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
           memoryTokens,
-          inputTokenCost: selectedProviderMapping.inputTokenCost,
-          outputTokenCost: selectedProviderMapping.outputTokenCost,
+          inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
+          outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
         })
       : {
           totalCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+          creditsToDeduct: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
           regularInputTokens: response.inputTokensConsumed,
           cachedInputTokens: response.cachedInputTokens ?? 0,
           cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
@@ -519,7 +527,7 @@ const app = new Elysia()
       output,
       inputTokensConsumed: response.inputTokensConsumed,
       outputTokensConsumed: response.outputTokensConsumed,
-      creditsToDeduct: creditsForCost(accounting.totalCost),
+      creditsToDeduct: accounting.creditsToDeduct,
     });
     persistMemory(output);
 
