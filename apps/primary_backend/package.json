@@ -3,7 +3,6 @@
   "version": "1.0.50",
   "exports": {
     ".": "./src/app.ts"
-
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -14,7 +13,8 @@
     "@elysiajs/jwt": "^1.4.2",
     "db": "workspace:*",
     "dotenv": "^17.3.1",
-    "elysia": "latest"
+    "elysia": "latest",
+    "stripe": "^22.3.1"
   },
   "devDependencies": {
     "bun-types": "latest"

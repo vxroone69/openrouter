@@ -30,17 +30,21 @@ function providerCostNanoDollars(
   return Math.max(0, Math.round(estimatedCost));
 }
 
-function creditsForCost(providerCostNanoDollarsValue: number) {
-  const markup = Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25);
+function creditsFromNanoDollars(providerCostNanoDollars: number) {
   const nanoDollarsPerCredit = Number(process.env.NANO_DOLLARS_PER_CREDIT ?? 1000);
-  return Math.max(1, Math.ceil((providerCostNanoDollarsValue / nanoDollarsPerCredit) * markup));
+  const markupMultiplier = Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25);
+
+  return Math.max(
+    1,
+    Math.ceil((providerCostNanoDollars / nanoDollarsPerCredit) * markupMultiplier)
+  );
 }
 
 function estimateTokens(text: string) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function buildCacheAccounting({
+function buildCostAccounting({
   inputTokens,
   outputTokens,
   cachedInputTokens,
@@ -57,22 +61,25 @@ function buildCacheAccounting({
   inputTokenCostNanoDollars: number;
   outputTokenCostNanoDollars: number;
 }) {
-  const regularInputTokens = Math.max(0, inputTokens - cachedInputTokens);
-  const baseCost = providerCostNanoDollars(inputTokens, outputTokens, inputTokenCostNanoDollars, outputTokenCostNanoDollars);
+  const baseCost = providerCostNanoDollars(
+    inputTokens,
+    outputTokens,
+    inputTokenCostNanoDollars,
+    outputTokenCostNanoDollars
+  );
   const cachedDiscountRate = 0.9;
   const cachedSavings = Math.round(cachedInputTokens * inputTokenCostNanoDollars * cachedDiscountRate);
-  const memoryCost = Math.round(Math.max(0, memoryTokens - cachedInputTokens) * inputTokenCostNanoDollars);
   const totalCost = Math.max(0, baseCost - cachedSavings);
-  const creditsToDeduct = creditsForCost(totalCost);
+  const creditsConsumed = creditsFromNanoDollars(totalCost);
 
   return {
     totalCost,
-    creditsToDeduct,
-    regularInputTokens,
+    creditsConsumed,
+    regularInputTokens: Math.max(0, inputTokens - cachedInputTokens),
     cachedInputTokens,
     cacheCreationInputTokens,
     baseCost,
-    memoryCost,
+    memoryCost: Math.round(memoryTokens * inputTokenCostNanoDollars),
     cachedSavings,
     costBreakdown: {
       inputTokens,
@@ -80,15 +87,13 @@ function buildCacheAccounting({
       memoryTokens,
       cachedInputTokens,
       cacheCreationInputTokens,
-      regularInputTokens,
       inputTokenCostNanoDollars,
       outputTokenCostNanoDollars,
       nanoDollarsPerCredit: Number(process.env.NANO_DOLLARS_PER_CREDIT ?? 1000),
       creditMarkupMultiplier: Number(process.env.CREDIT_MARKUP_MULTIPLIER ?? 1.25),
-      creditsToDeduct,
       totalIfNotCached: baseCost,
       totalActualCost: totalCost,
-      cachedDiscountRate,
+      creditsConsumed,
     },
   };
 }
@@ -135,13 +140,13 @@ const app = new Elysia()
       output,
       inputTokensConsumed,
       outputTokensConsumed,
-      creditsToDeduct,
+      creditsConsumed,
     }: {
       providerMappingId: number;
       output: string;
       inputTokensConsumed: number;
       outputTokensConsumed: number;
-      creditsToDeduct: number;
+      creditsConsumed: number;
     }) => {
       try {
         await prisma.$transaction(
@@ -152,7 +157,7 @@ const app = new Elysia()
               },
               data: {
                 creditsConsumed: {
-                  increment: creditsToDeduct
+                  increment: creditsConsumed
                 },
                 lastUsed: new Date()
               }
@@ -164,7 +169,7 @@ const app = new Elysia()
               },
               data: {
                 credits: {
-                  decrement: creditsToDeduct
+                  decrement: creditsConsumed
                 }
               }
             });
@@ -338,6 +343,7 @@ const app = new Elysia()
         : estimateTokens(memory.content);
       return sum + rankedTokens;
     }, 0);
+    const memoryContext = buildMemoryPrefix(memories);
     const memoryLogDetails = {
       injectedMemories: memories.map((memory) => ({
         memoryId: memory.id,
@@ -354,10 +360,9 @@ const app = new Elysia()
         memoryTokens,
         memoryTokenBudget,
         memoryMode,
-        cachingSupported: false,
+        cachingSupported: Boolean(memoryContext),
       },
     };
-    const memoryContext = buildMemoryPrefix(memories);
 
     if (body.stream) {
       const providerResult = await tryProviderFallbackStream({
@@ -407,33 +412,33 @@ const app = new Elysia()
         },
         onDone: (usage, output) => {
           const accounting = selectedProviderMapping
-            ? buildCacheAccounting({
-                inputTokens: usage.inputTokensConsumed,
-                outputTokens: usage.outputTokensConsumed,
-                cachedInputTokens: usage.cachedInputTokens ?? 0,
-                cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
-                memoryTokens,
-                inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
-                outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
-              })
+            ? buildCostAccounting({
+              inputTokens: usage.inputTokensConsumed,
+              outputTokens: usage.outputTokensConsumed,
+              cachedInputTokens: usage.cachedInputTokens ?? 0,
+              cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
+              memoryTokens,
+              inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
+              outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
+            })
             : {
-                totalCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
-                creditsToDeduct: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
-                regularInputTokens: usage.inputTokensConsumed,
-                cachedInputTokens: usage.cachedInputTokens ?? 0,
-                cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
-                baseCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
-                memoryCost: memoryTokens,
-                cachedSavings: 0,
-                costBreakdown: memoryLogDetails.costBreakdown,
-              };
+              totalCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+              creditsConsumed: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+              regularInputTokens: usage.inputTokensConsumed,
+              cachedInputTokens: usage.cachedInputTokens ?? 0,
+              cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
+              baseCost: totalTokens(usage.inputTokensConsumed, usage.outputTokensConsumed),
+              memoryCost: memoryTokens,
+              cachedSavings: 0,
+              costBreakdown: memoryLogDetails.costBreakdown,
+            };
 
           void persistUsage({
             providerMappingId: providerResult.providerMappingId,
             output,
             inputTokensConsumed: usage.inputTokensConsumed,
             outputTokensConsumed: usage.outputTokensConsumed,
-            creditsToDeduct: accounting.creditsToDeduct,
+            creditsConsumed: accounting.creditsConsumed,
           });
           persistMemory(output);
 
@@ -498,26 +503,34 @@ const app = new Elysia()
     const response = providerResult.response;
     const selectedProviderMapping = providerMappingById.get(providerResult.providerMappingId);
     const accounting = selectedProviderMapping
-      ? buildCacheAccounting({
-          inputTokens: response.inputTokensConsumed,
-          outputTokens: response.outputTokensConsumed,
-          cachedInputTokens: response.cachedInputTokens ?? 0,
-          cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
-          memoryTokens,
-          inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
-          outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
-        })
+      ? buildCostAccounting({
+        inputTokens: response.inputTokensConsumed,
+        outputTokens: response.outputTokensConsumed,
+        cachedInputTokens: response.cachedInputTokens ?? 0,
+        cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
+        memoryTokens,
+        inputTokenCostNanoDollars: selectedProviderMapping.inputTokenCostNanoDollars,
+        outputTokenCostNanoDollars: selectedProviderMapping.outputTokenCostNanoDollars,
+      })
       : {
-          totalCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
-          creditsToDeduct: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
-          regularInputTokens: response.inputTokensConsumed,
-          cachedInputTokens: response.cachedInputTokens ?? 0,
-          cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
-          baseCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
-          memoryCost: memoryTokens,
-          cachedSavings: 0,
-          costBreakdown: memoryLogDetails.costBreakdown,
-        };
+        totalCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+        creditsConsumed: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+        regularInputTokens: response.inputTokensConsumed,
+        cachedInputTokens: response.cachedInputTokens ?? 0,
+        cacheCreationInputTokens: response.cacheCreationInputTokens ?? 0,
+        baseCost: totalTokens(response.inputTokensConsumed, response.outputTokensConsumed),
+        memoryCost: memoryTokens,
+        cachedSavings: 0,
+        costBreakdown: memoryLogDetails.costBreakdown,
+      };
+    const responseCost = selectedProviderMapping
+      ? providerCostNanoDollars(
+        response.inputTokensConsumed,
+        response.outputTokensConsumed,
+        selectedProviderMapping.inputTokenCostNanoDollars,
+        selectedProviderMapping.outputTokenCostNanoDollars
+      )
+      : totalTokens(response.inputTokensConsumed, response.outputTokensConsumed);
     const output = response.completions.choices
       .map((choice) => choice.message.content)
       .join("\n");
@@ -527,7 +540,7 @@ const app = new Elysia()
       output,
       inputTokensConsumed: response.inputTokensConsumed,
       outputTokensConsumed: response.outputTokensConsumed,
-      creditsToDeduct: accounting.creditsToDeduct,
+      creditsConsumed: accounting.creditsConsumed,
     });
     persistMemory(output);
 
@@ -565,7 +578,7 @@ const app = new Elysia()
           assistant: "assistant"
         }),
         content: t.String()
-        }))
+      }))
     }),
     query: t.Object({
       memory: t.Optional(t.Union([

@@ -1,83 +1,88 @@
 import jwt from "@elysiajs/jwt";
-import Elysia from "elysia";
+import Elysia, { t } from "elysia";
+import Stripe from "stripe";
 import { PaymentsModel } from "./models";
-import { PaymentsService, type CreditPackageId } from "./service";
+import { PaymentsService } from "./service";
 
 export const app = new Elysia({ prefix: "payments" })
+    .post("/webhook", async ({ request, headers, status }) => {
+        const signature = headers["stripe-signature"];
+
+        if (!signature) {
+            return status(400, { message: "Missing Stripe signature" });
+        }
+
+        const rawBody = await request.text();
+
+        try {
+            const event = await PaymentsService.constructWebhookEvent(rawBody, signature);
+
+            if (event.type === "checkout.session.completed") {
+                await PaymentsService.handleCheckoutCompleted(
+                    event.data.object as Stripe.Checkout.Session
+                );
+            }
+
+            return { received: true };
+        } catch (error) {
+            console.error("STRIPE WEBHOOK ERROR:", error);
+            return status(400, { message: "Invalid webhook" });
+        }
+    }, {
+        response: {
+            200: t.Object({ received: t.Boolean() }),
+            400: t.Object({
+                message: t.Union([
+                    t.Literal("Missing Stripe signature"),
+                    t.Literal("Invalid webhook"),
+                ]),
+            }),
+        },
+    })
     .use(
         jwt({
-            name: 'jwt',
-            secret: process.env.JWT_SECRET!
+            name: "jwt",
+            secret: process.env.JWT_SECRET!,
         })
     )
     .resolve(async ({ cookie: { auth }, status, jwt }) => {
         if (!auth) {
-            return status(401)
+            return status(401);
         }
 
         const decoded = await jwt.verify(auth.value as string);
 
         if (!decoded || !decoded.userId) {
-            return status(401)
+            return status(401);
         }
 
         return {
-            userId: decoded.userId as string
-        }
+            userId: decoded.userId as string,
+        };
     })
-    .post("/onramp", async ({ userId, status }) => {
+    .post("/checkout", async ({ userId, body, status }) => {
         try {
-            const credits = await PaymentsService.onramp(Number(userId));
-            return {
-                message: "Onramp successful" as const,
-                credits
+            if (body.kind === "credits") {
+                if (!body.packageId) {
+                    return status(400, { message: "Missing packageId" });
+                }
+
+                return await PaymentsService.createCreditCheckout(
+                    Number(userId),
+                    body.packageId
+                );
             }
-        } catch (e) {
-            return status(411, {
-                message: "Onramp failed" as const
-            })
+
+            return await PaymentsService.createProCheckout(Number(userId));
+        } catch (error) {
+            console.error("CHECKOUT ERROR:", error);
+            return status(500, { message: "Checkout failed" });
         }
     }, {
+        body: PaymentsModel.checkoutSchema,
         response: {
-            200: PaymentsModel.onrampResponseSchema,
-            411: PaymentsModel.onrampFailedResponseSchema
-        }
-    })
-    .post("/credits", async ({ userId, body, status }) => {
-        try {
-            const credits = await PaymentsService.purchaseCredits(Number(userId), body.packageId as CreditPackageId);
-            return {
-                message: "Onramp successful" as const,
-                credits
-            }
-        } catch {
-            return status(411, {
-                message: "Onramp failed" as const
-            })
-        }
-    }, {
-        body: PaymentsModel.purchaseCreditsSchema,
-        response: {
-            200: PaymentsModel.onrampResponseSchema,
-            411: PaymentsModel.onrampFailedResponseSchema
-        }
-    })
-    .post("/upgrade", async ({ userId, status }) => {
-        try {
-            const user = await PaymentsService.upgradeToPro(Number(userId));
-            return {
-                message: "Upgrade successful" as const,
-                plan: "pro" as const,
-                credits: user.credits
-            }
-        } catch {
-            return status(411, {
-                message: "Onramp failed" as const
-            })
-        }
-    }, {
-        response: {
-            200: PaymentsModel.upgradeResponseSchema,
-            411: PaymentsModel.onrampFailedResponseSchema
-        }
-    }) 
+            200: PaymentsModel.checkoutResponseSchema,
+            400: t.Object({ message: t.Literal("Missing packageId") }),
+            500: t.Object({ message: t.Literal("Checkout failed") }),
+        },
+    });

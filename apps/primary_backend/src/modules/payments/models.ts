@@ -27,4 +27,20 @@ export namespace PaymentsModel {
         plan: t.Literal("pro"),
         credits: t.Number()
     })
+
+    export const checkoutSchema = t.Object({
+        kind: t.Union([
+            t.Literal("credits"),
+            t.Literal("pro_upgrade"),
+        ]),
+        packageId: t.Optional(t.Union([
+            t.Literal("starter"),
+            t.Literal("growth"),
+            t.Literal("scale"),
+        ])),
+    });
+
+    export const checkoutResponseSchema = t.Object({
+        url: t.String(),
+    });
 }

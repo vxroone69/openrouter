@@ -41,31 +41,35 @@ export function Credits() {
         }
     })
 
-    const onrampMutation = useMutation({
+    const checkoutMutation = useMutation({
         mutationFn: async (packageId: "starter" | "growth" | "scale") => {
-            const response = await elysiaClient.payments.credits.post({ packageId });
+            const response = await elysiaClient.payments.checkout.post({
+                kind: "credits",
+                packageId,
+            });
             if (response.error) {
                 const errValue = response.error.value as { message?: string } | undefined;
-                throw new Error(errValue?.message || "Failed to add credits");
+                throw new Error(errValue?.message || "Failed to start checkout");
             }
             return response.data;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["api-keys"] });
-            queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+        onSuccess: (data) => {
+            window.location.href = data.url;
         },
     });
 
     const upgradeMutation = useMutation({
         mutationFn: async () => {
-            const response = await elysiaClient.payments.upgrade.post();
+            const response = await elysiaClient.payments.checkout.post({
+                kind: "pro_upgrade",
+            });
             if (response.error) {
-                throw new Error("Failed to upgrade plan");
+                throw new Error("Failed to start upgrade checkout");
             }
             return response.data;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+        onSuccess: (data) => {
+            window.location.href = data.url;
         },
     });
 
@@ -114,7 +118,7 @@ export function Credits() {
 
                 {/* Balance & usage */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {onrampMutation.isSuccess && onrampMutation.data && (
+                    {new URLSearchParams(window.location.search).get("checkout") === "success" && (
                         <Card className="sm:col-span-2 bg-card/50 border-emerald-500/20">
                             <CardContent className="pt-6">
                                 <div className="flex items-center gap-3">
@@ -124,7 +128,7 @@ export function Credits() {
                                     <div>
                                         <p className="text-sm font-medium text-emerald-400">Current Balance</p>
                                         <p className="text-3xl font-bold tracking-tight">
-                                            {onrampMutation.data.credits?.toLocaleString() ?? "—"} credits
+                                            Checkout complete
                                         </p>
                                     </div>
                                 </div>
@@ -244,29 +248,29 @@ export function Credits() {
                                 </div>
                                 <Button
                                     variant="outline"
-                                    onClick={() => onrampMutation.mutate(pack.id)}
-                                    disabled={onrampMutation.isPending}
+                                    onClick={() => checkoutMutation.mutate(pack.id)}
+                                    disabled={checkoutMutation.isPending}
                                 >
-                                    Add package
+                                    {checkoutMutation.isPending ? "Opening..." : "Checkout"}
                                 </Button>
                             </div>
                             ))}
                         </div>
 
-                        {onrampMutation.isSuccess && (
+                        {new URLSearchParams(window.location.search).get("checkout") === "success" && (
                             <div className="flex items-start gap-2.5 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3.5 py-3 mt-4">
                                 <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
                                 <span>
-                                    Credits added successfully. Your new balance: {onrampMutation.data?.credits?.toLocaleString() ?? "—"} credits.
+                                    Payment completed. Credits will appear after Stripe webhook processing.
                                 </span>
                             </div>
                         )}
 
-                        {onrampMutation.isError && (
+                        {checkoutMutation.isError && (
                             <div className="flex items-start gap-2.5 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3.5 py-3 mt-4">
                                 <AlertCircle className="size-4 shrink-0 mt-0.5" />
                                 <span>
-                                    {onrampMutation.error?.message || "Failed to add credits. Please try again."}
+                                    {checkoutMutation.error?.message || "Failed to start checkout. Please try again."}
                                 </span>
                             </div>
                         )}

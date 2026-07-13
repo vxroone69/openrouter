@@ -83,13 +83,19 @@ model ModelProviderMapping {
 }
 
 model OnrampTransaction {
-  amount    Int
-  status    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount                  Int
+  status                  String
+  provider                String?
+  providerSessionId       String? @unique
+  providerPaymentIntentId String?
+  packageId               String?
+  type                    String  @default("credits")
+  metadata                Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  id                      Int      @id @default(autoincrement())
+  userId                  Int
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
