@@ -1,20 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useElysiaClient } from "@/providers/Eden";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router";
 import {
     Key,
     Coins,
-    Activity,
-    Plus,
     ArrowRight,
     Loader2,
-    Layers,
     AlertCircle,
     MessageSquareText,
     BarChart3,
+    BookOpen,
 } from "lucide-react";
 
 export function Dashboard() {
@@ -29,24 +27,14 @@ export function Dashboard() {
         },
     });
 
-    const modelsQuery = useQuery({
-        queryKey: ["models"],
-        queryFn: async () => {
-            const response = await elysiaClient.models.get();
-            if (response.error) throw new Error("Failed to fetch models");
-            return response.data;
-        },
-    });
-
     const apiKeys = apiKeysQuery.data?.apiKeys ?? [];
     const activeKeys = apiKeys.filter((k) => !k.disabled);
     const totalCreditsUsed = apiKeys.reduce(
         (sum, k) => sum + (k.creditsConsumed ?? 0),
         0
     );
-    const modelCount = modelsQuery.data?.models?.length ?? 0;
-    const isLoading = apiKeysQuery.isLoading || modelsQuery.isLoading;
-    const hasError = apiKeysQuery.isError || modelsQuery.isError;
+    const isLoading = apiKeysQuery.isLoading;
+    const hasError = apiKeysQuery.isError;
     const formatLastUsed = (value: Date | string | null | undefined) => {
         if (!value) return "Never";
         const date = value instanceof Date ? value : new Date(value);
@@ -67,12 +55,12 @@ export function Dashboard() {
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
                         <p className="text-muted-foreground text-sm mt-1">
-                            Account health, key activity, and available routing capacity.
+                            Account health, key activity, and gateway readiness.
                         </p>
                     </div>
                     <Button variant="outline" size="sm" asChild>
-                        <Link to="/api-keys">
-                            Create key
+                        <Link to="/docs">
+                            Read docs
                             <ArrowRight className="size-3.5" />
                         </Link>
                     </Button>
@@ -92,7 +80,6 @@ export function Dashboard() {
                                     size="sm"
                                     onClick={() => {
                                         apiKeysQuery.refetch();
-                                        modelsQuery.refetch();
                                     }}
                                 >
                                     Retry
@@ -144,16 +131,14 @@ export function Dashboard() {
                         <Card className="bg-card/50 border-border/50">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">Available Models</span>
-                                    <Layers className="size-4 text-muted-foreground/60" />
+                                    <span className="text-sm text-muted-foreground">Gateway Docs</span>
+                                    <BookOpen className="size-4 text-muted-foreground/60" />
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <p className="text-3xl font-bold tracking-tight">
-                                    {modelCount}
-                                </p>
+                                <p className="text-3xl font-bold tracking-tight">Ready</p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    from all providers
+                                    examples, memory, billing
                                 </p>
                             </CardContent>
                         </Card>
@@ -162,6 +147,28 @@ export function Dashboard() {
 
                 {/* Quick actions */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
+                        <CardContent className="pt-6">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <div className="size-10 rounded-lg bg-primary/5 border border-border/50 flex items-center justify-center mb-3">
+                                        <BookOpen className="size-5 text-muted-foreground" />
+                                    </div>
+                                    <h3 className="font-semibold text-sm">Developer Docs</h3>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Learn each Synapse feature and wire an app to the gateway.
+                                    </p>
+                                </div>
+                                <Button variant="outline" size="sm" asChild>
+                                    <Link to="/docs">
+                                        Open
+                                        <ArrowRight className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
                         <CardContent className="pt-6">
                             <div className="flex items-start justify-between gap-4">
@@ -186,7 +193,7 @@ export function Dashboard() {
 
                     <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
                         <CardContent className="pt-6">
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start justify-between">
                                 <div>
                                     <div className="size-10 rounded-lg bg-primary/5 border border-border/50 flex items-center justify-center mb-3">
                                         <MessageSquareText className="size-5 text-muted-foreground" />
@@ -199,28 +206,6 @@ export function Dashboard() {
                                 <Button variant="outline" size="sm" asChild>
                                     <Link to="/playground">
                                         Open
-                                        <ArrowRight className="size-3.5" />
-                                    </Link>
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-card/30 border-border/40 hover:border-border/70 transition-colors">
-                        <CardContent className="pt-6">
-                            <div className="flex items-start justify-between">
-                                <div>
-                                    <div className="size-10 rounded-lg bg-primary/5 border border-border/50 flex items-center justify-center mb-3">
-                                        <Plus className="size-5 text-muted-foreground" />
-                                    </div>
-                                    <h3 className="font-semibold text-sm">Create API Key</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Generate a new key to start making requests.
-                                    </p>
-                                </div>
-                                <Button variant="outline" size="sm" asChild>
-                                    <Link to="/api-keys">
-                                        Go
                                         <ArrowRight className="size-3.5" />
                                     </Link>
                                 </Button>

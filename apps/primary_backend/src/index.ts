@@ -18,6 +18,12 @@ export const app = new Elysia()
             credentials: true,
         })
     )
+    .get("/", () => ({
+        service: "synapse-primary-backend",
+        status: "ok",
+        frontend: frontendOrigin,
+        routes: ["/auth", "/api-keys", "/models", "/memory", "/api/v1/analytics", "/payments"],
+    }))
     .use(authApp)
     .use(apiKeyApp)
     .use(modelsApp)

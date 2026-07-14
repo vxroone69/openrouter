@@ -107,6 +107,12 @@ const app = new Elysia()
     credentials: true,
   }))
   .use(bearer())
+  .get("/", () => ({
+    service: "synapse-gateway",
+    status: "ok",
+    frontend: frontendOrigin,
+    routes: ["/api/v1/chat/completions"],
+  }))
   .post("/api/v1/chat/completions", async ({ status, bearer: apiKey, body, query }) => {
     const requestStartedAt = performance.now();
     const model = body.model;

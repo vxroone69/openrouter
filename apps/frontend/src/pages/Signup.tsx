@@ -13,7 +13,7 @@ import {
     CardContent,
     CardFooter,
 } from "@/components/ui/card";
-import { ArrowRight, Mail, Lock, Loader2, AlertCircle, CheckCircle2, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mail, Lock, Loader2, AlertCircle, CheckCircle2, Zap } from "lucide-react";
 
 export function Signup() {
     const emailRef = useRef<HTMLInputElement>(null);
@@ -53,6 +53,18 @@ export function Signup() {
                     backgroundSize: "40px 40px",
                 }}
             />
+
+            <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className="absolute left-4 top-4 z-20 text-muted-foreground hover:text-foreground sm:left-6 sm:top-6"
+            >
+                <Link to="/">
+                    <ArrowLeft className="size-4" />
+                    Back
+                </Link>
+            </Button>
 
             <div className="relative z-10 w-full max-w-[420px] px-6">
                 <div className="flex items-center justify-center gap-2.5 mb-10">

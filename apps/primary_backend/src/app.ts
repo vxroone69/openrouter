@@ -8,10 +8,18 @@ import {app as memoryApp} from "./modules/memory"
 import {app as analyticsApp} from "./modules/analytics"
 import {app as paymentsApp} from "./modules/payments"
 
+const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3001";
+
 export const app = new Elysia()
       .use(cors({
-      origin: "http://localhost:3001",
+      origin: frontendOrigin,
       credentials: true
+      }))
+.get("/", () => ({
+      service: "synapse-primary-backend",
+      status: "ok",
+      frontend: frontendOrigin,
+      routes: ["/auth", "/api-keys", "/models", "/memory", "/api/v1/analytics", "/payments"],
       }))
 .use(authApp)
 .use(apiKeyApp)
