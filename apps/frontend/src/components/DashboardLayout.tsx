@@ -10,7 +10,6 @@ import {
     LogOut,
     BarChart3,
     Brain,
-    BookOpen,
 } from "lucide-react";
 
 const navItems = [
@@ -18,7 +17,6 @@ const navItems = [
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
     { label: "Playground", href: "/playground", icon: MessageSquareText },
     { label: "Memory", href: "/memory", icon: Brain },
-    { label: "Docs", href: "/docs", icon: BookOpen },
     { label: "API Keys", href: "/api-keys", icon: Key },
     { label: "Credits", href: "/credits", icon: Coins },
 ];

@@ -1,4 +1,6 @@
-import { Link } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Link, Navigate } from "react-router";
+import { useElysiaClient } from "@/providers/Eden";
 import { Button } from "@/components/ui/button";
 import {
     ArrowRight,
@@ -65,6 +67,22 @@ function BrandMark({ mark }: { mark: string }) {
 }
 
 export function Landing() {
+    const elysiaClient = useElysiaClient();
+    const profileQuery = useQuery({
+        queryKey: ["user-profile"],
+        queryFn: async () => {
+            const response = await elysiaClient.auth.profile.get();
+            if (response.error) throw new Error("Unauthorized");
+            return response.data;
+        },
+        retry: false,
+        staleTime: 15_000,
+    });
+
+    if (profileQuery.isSuccess) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
     return (
         <div className="dark min-h-screen bg-[#080909] text-foreground px-3 py-3 sm:px-5 sm:py-5">
             <main className="relative min-h-[calc(100vh-24px)] overflow-hidden rounded-[28px] border border-white/10 bg-[#0b0d0c] shadow-2xl shadow-black/40 sm:min-h-[calc(100vh-40px)]">

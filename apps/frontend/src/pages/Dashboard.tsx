@@ -7,12 +7,12 @@ import { Link } from "react-router";
 import {
     Key,
     Coins,
+    Plus,
     ArrowRight,
     Loader2,
     AlertCircle,
     MessageSquareText,
     BarChart3,
-    BookOpen,
 } from "lucide-react";
 
 export function Dashboard() {
@@ -59,8 +59,8 @@ export function Dashboard() {
                         </p>
                     </div>
                     <Button variant="outline" size="sm" asChild>
-                        <Link to="/docs">
-                            Read docs
+                        <Link to="/api-keys">
+                            Create key
                             <ArrowRight className="size-3.5" />
                         </Link>
                     </Button>
@@ -131,14 +131,16 @@ export function Dashboard() {
                         <Card className="bg-card/50 border-border/50">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">Gateway Docs</span>
-                                    <BookOpen className="size-4 text-muted-foreground/60" />
+                                    <span className="text-sm text-muted-foreground">Gateway Ready</span>
+                                    <Key className="size-4 text-muted-foreground/60" />
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <p className="text-3xl font-bold tracking-tight">Ready</p>
+                                <p className="text-3xl font-bold tracking-tight">
+                                    {activeKeys.length > 0 ? "Yes" : "No"}
+                                </p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    examples, memory, billing
+                                    {activeKeys.length > 0 ? "active keys available" : "create a key to start"}
                                 </p>
                             </CardContent>
                         </Card>
@@ -152,16 +154,16 @@ export function Dashboard() {
                             <div className="flex items-start justify-between gap-4">
                                 <div>
                                     <div className="size-10 rounded-lg bg-primary/5 border border-border/50 flex items-center justify-center mb-3">
-                                        <BookOpen className="size-5 text-muted-foreground" />
+                                        <Plus className="size-5 text-muted-foreground" />
                                     </div>
-                                    <h3 className="font-semibold text-sm">Developer Docs</h3>
+                                    <h3 className="font-semibold text-sm">Create API Key</h3>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Learn each Synapse feature and wire an app to the gateway.
+                                        Generate a new key to start making gateway requests.
                                     </p>
                                 </div>
                                 <Button variant="outline" size="sm" asChild>
-                                    <Link to="/docs">
-                                        Open
+                                    <Link to="/api-keys">
+                                        Go
                                         <ArrowRight className="size-3.5" />
                                     </Link>
                                 </Button>
