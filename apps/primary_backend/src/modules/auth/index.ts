@@ -86,6 +86,22 @@ export const app = new Elysia({ prefix: "auth" })
             403: AuthModel.signinFailureSchema
         }
     })
+    .post("/sign-out", async ({ set }) => {
+        set.cookie = {
+            auth: {
+                value: "",
+                httpOnly: true,
+                maxAge: 0,
+                path: "/",
+                sameSite: isProduction ? "none" : "lax",
+                secure: isProduction,
+            },
+        };
+
+        return {
+            message: "Signed out successfully",
+        };
+    })
     .resolve(async ({ cookie: { auth }, status, jwt}) => {
         if (!auth) {
             return status(401)
