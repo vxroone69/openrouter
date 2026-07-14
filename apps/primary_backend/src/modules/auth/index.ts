@@ -12,11 +12,32 @@ export const app = new Elysia({ prefix: "auth" })
     )
     .post("/sign-up", async ({ body, status }) => {
         try {
-            const userId = await AuthService.signup(body.email, body.password);
+            const email = body.email.trim().toLowerCase();
+            const password = body.password;
+
+            if (!email.includes("@") || !email.includes(".")) {
+                return status(400, {
+                    message: "Enter a valid email address"
+                })
+            }
+
+            if (password.length < 8) {
+                return status(400, {
+                    message: "Password must be at least 8 characters"
+                })
+            }
+
+            const userId = await AuthService.signup(email, password);
             return {
                 id: userId
             }
         } catch(e) {
+            if (e instanceof Error && e.message === "EMAIL_ALREADY_EXISTS") {
+                return status(409, {
+                    message: "An account with this email already exists"
+                })
+            }
+
             console.error("SIGNUP ERROR:", e);
 
             return status(400, {
@@ -28,6 +49,7 @@ export const app = new Elysia({ prefix: "auth" })
         response: {
             200: AuthModel.signupResponseSchema,
             400: AuthModel.signupFailureSchema,
+            409: AuthModel.signupFailureSchema,
         }
     })
     .post("/sign-in", async ({ jwt, body, status, set }) => {

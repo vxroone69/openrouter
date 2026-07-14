@@ -1,8 +1,20 @@
 import { prisma } from "db";
-import { jwt } from '@elysiajs/jwt'
 
 export abstract class AuthService {
     static async signup(email: string, password: string): Promise<string> {
+        const existingUser = await prisma.user.findUnique({
+            where: {
+                email,
+            },
+            select: {
+                id: true,
+            },
+        });
+
+        if (existingUser) {
+            throw new Error("EMAIL_ALREADY_EXISTS");
+        }
+
         const user = await prisma.user.create({
             data: {
                 email,

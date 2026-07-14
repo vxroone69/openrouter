@@ -32,7 +32,7 @@ export namespace AuthModel {
     })
 
     export const signupFailureSchema = t.Object({
-        message: t.Literal("Error while signing up")
+        message: t.String()
     })
 
     export type signupResponseSchema = typeof signinResponseSchema.static;
