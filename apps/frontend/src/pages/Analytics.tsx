@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { primaryBackendUrl } from "@/config/api";
 import {
     AlertCircle,
     BarChart3,
@@ -134,7 +135,7 @@ const breakdownOptions: { label: string; value: BreakdownBy }[] = [
 ];
 
 function apiUrl(path: string, params: Record<string, string | number | undefined>) {
-    const url = new URL(`http://localhost:3000${path}`);
+    const url = new URL(path, primaryBackendUrl);
     for (const [key, value] of Object.entries(params)) {
         if (value === undefined) continue;
         url.searchParams.set(key, String(value));

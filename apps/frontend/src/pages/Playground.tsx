@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useElysiaClient } from "@/providers/Eden";
+import { apiBackendUrl } from "@/config/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -264,7 +265,7 @@ export function Playground() {
         };
 
         try {
-            const url = new URL("http://localhost:3002/api/v1/chat/completions");
+            const url = new URL("/api/v1/chat/completions", apiBackendUrl);
             url.searchParams.set("memory", memoryMode);
             url.searchParams.set("memoryLimit", memoryLimit);
             url.searchParams.set("memoryTokenBudget", memoryTokenBudget);

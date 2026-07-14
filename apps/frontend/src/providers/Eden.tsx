@@ -1,8 +1,9 @@
 import { treaty } from '@elysiajs/eden'
 import type { App } from 'app'
 import { createContext, useContext } from 'react';
+import { primaryBackendUrl } from '../config/api';
 
-const client = treaty<App>('http://localhost:3000', {
+const client = treaty<App>(primaryBackendUrl, {
     fetch: {
         credentials: 'include'
     }

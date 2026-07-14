@@ -14,8 +14,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ElysiaClientContextProvider } from "./providers/Eden";
 import { treaty } from "@elysiajs/eden";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { primaryBackendUrl } from "./config/api";
 
-const client = treaty<App>('http://localhost:3000', {
+const client = treaty<App>(primaryBackendUrl, {
   fetch: {
     credentials: 'include'
   }
