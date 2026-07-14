@@ -66,6 +66,13 @@ const errors = [
     ["503 All providers failed", "Every mapped provider failed for this request after fallback attempts."],
 ];
 
+const sdkHighlights = [
+    "Keeps API keys on your server and adds the bearer token automatically.",
+    "Supports non-streaming completions and OpenAI-style streaming chunks.",
+    "Provides typed memory options for none, user, and API-key scoped context.",
+    "Includes typed SynapseError objects with status and parsed response body.",
+];
+
 export function Docs() {
     return (
         <div className="dark min-h-screen bg-background text-foreground">
@@ -133,6 +140,76 @@ export function Docs() {
                         </Card>
                     ))}
                 </div>
+
+                <Card className="bg-card/40 border-border/50">
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <Terminal className="size-4 text-muted-foreground" />
+                            <CardTitle className="text-lg">TypeScript SDK</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Use the SDK when integrating Synapse into a server-side TypeScript or JavaScript application.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid gap-3 md:grid-cols-2">
+                            {sdkHighlights.map((item) => (
+                                <div key={item} className="rounded-md border border-border/40 bg-background/30 px-3 py-3 text-sm leading-6 text-muted-foreground">
+                                    {item}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Install and initialize</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`npm install @synapse/sdk
+
+import { Synapse } from "@synapse/sdk";
+
+const synapse = new Synapse({
+  apiKey: process.env.SYNAPSE_API_KEY!,
+  baseUrl: "https://your-api-backend.com",
+});`}</code></pre>
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Create a completion</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`const completion = await synapse.chat.completions.create({
+  model: "groq/llama-3.1-8b-instant",
+  memory: "user",
+  memoryLimit: 5,
+  memoryTokenBudget: 500,
+  messages: [
+    { role: "user", content: "Write a concise support reply." },
+  ],
+});`}</code></pre>
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Stream response chunks</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`const stream = await synapse.chat.completions.stream({
+  model: "groq/llama-3.1-8b-instant",
+  memory: "api_key",
+  messages: [
+    { role: "user", content: "Draft a release note." },
+  ],
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta.content ?? "");
+}`}</code></pre>
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">List available models</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`const models = await synapse.models.list();
+
+for (const model of models) {
+  console.log(model.slug, model.minPlan);
+}`}</code></pre>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <Card className="bg-card/40 border-border/50">
                     <CardHeader>
