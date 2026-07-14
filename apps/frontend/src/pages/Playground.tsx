@@ -304,8 +304,9 @@ export function Playground() {
             const decoder = new TextDecoder();
             let buffer = "";
             let usage: StreamUsage = { inputTokensConsumed: 0, outputTokensConsumed: 0 };
+            let streamDone = false;
 
-            while (true) {
+            while (!streamDone) {
                 const { done, value } = await reader.read();
 
                 if (done) break;
@@ -319,6 +320,8 @@ export function Playground() {
 
                     const data = parseSSEChunk(rawEvent);
                     if (data === "[DONE]") {
+                        streamDone = true;
+                        await reader.cancel().catch(() => undefined);
                         boundaryIndex = buffer.indexOf("\n\n");
                         continue;
                     }
