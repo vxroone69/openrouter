@@ -3,6 +3,8 @@ import { AuthModel } from "./models";
 import { AuthService } from "./service";
 import jwt from "@elysiajs/jwt";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export const app = new Elysia({ prefix: "auth" })
     .use(
         jwt({
@@ -69,7 +71,8 @@ export const app = new Elysia({ prefix: "auth" })
                 httpOnly: true,
                 maxAge: 7 * 86400,
                 path: "/",
-                sameSite: "lax",
+                sameSite: isProduction ? "none" : "lax",
+                secure: isProduction,
             },
         };
 
