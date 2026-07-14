@@ -1,5 +1,12 @@
+declare const __PRIMARY_BACKEND_URL__: string | undefined;
+declare const __API_BACKEND_URL__: string | undefined;
+
 export const primaryBackendUrl =
-    import.meta.env.VITE_PRIMARY_BACKEND_URL ?? "http://localhost:3000";
+    typeof __PRIMARY_BACKEND_URL__ === "string"
+        ? __PRIMARY_BACKEND_URL__
+        : "http://localhost:3000";
 
 export const apiBackendUrl =
-    import.meta.env.VITE_API_BACKEND_URL ?? "http://localhost:3002";
+    typeof __API_BACKEND_URL__ === "string"
+        ? __API_BACKEND_URL__
+        : "http://localhost:3002";
