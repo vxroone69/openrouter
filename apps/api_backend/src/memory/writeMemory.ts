@@ -91,6 +91,10 @@ function detectObviousMemoryHint(text: string): MemoryOwner | null {
   const lower = text.toLowerCase();
 
   if (
+    lower.includes("this api key") ||
+    lower.includes("this key") ||
+    lower.includes("api key belongs") ||
+    lower.includes("key belongs") ||
     lower.includes("for this key") ||
     lower.includes("for this api key") ||
     lower.includes("for this app") ||

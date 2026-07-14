@@ -551,7 +551,7 @@ export function Playground() {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Controls which saved memories are injected into the request.
+                                    Controls which memories are injected and where new chat memories are stored.
                                 </p>
                             </div>
 
@@ -846,7 +846,9 @@ export function Playground() {
                                             ? "Saving"
                                             : saveStatus === "saved"
                                                 ? "Saved"
-                                                : "Save memory"}
+                                                : memoryMode === "api_key"
+                                                    ? "Save to key"
+                                                    : "Save memory"}
                                     </Button>
                                 </div>
                             </div>
