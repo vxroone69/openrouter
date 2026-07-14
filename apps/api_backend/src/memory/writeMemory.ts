@@ -242,13 +242,8 @@ async function classifyWithLLM(text: string): Promise<MemoryClassification | nul
 }
 
 async function classifyMemory(messages: Messages): Promise<MemoryCandidate | null> {
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  const text = getLastUserMessageText(messages);
 
-  if (!lastUserMessage) {
-    return null;
-  }
-
-  const text = lastUserMessage.content.trim();
   if (!text) {
     return null;
   }
@@ -275,6 +270,27 @@ async function classifyMemory(messages: Messages): Promise<MemoryCandidate | nul
     importance: Math.min(1, Math.max(0, llmCandidate.importance / 5)),
     savedBy: "llm",
     reasoning: "LLM classifier identified durable information worth recalling.",
+  };
+}
+
+function getLastUserMessageText(messages: Messages) {
+  return [...messages].reverse().find((message) => message.role === "user")?.content.trim() ?? "";
+}
+
+function buildApiKeyFallbackCandidate(messages: Messages): MemoryCandidate | null {
+  const text = getLastUserMessageText(messages);
+  if (!text || detectObviousNonMemory(text)) {
+    return null;
+  }
+
+  return {
+    content: clipMemoryText(text),
+    scope: "semantic",
+    owner: "api_key",
+    confidence: 0.6,
+    importance: 0.4,
+    savedBy: "rule",
+    reasoning: "Stored under the selected API key because memory=api_key was requested.",
   };
 }
 
@@ -309,7 +325,9 @@ export async function writeMemoryFromChatTurn(input: {
     return null;
   }
 
-  const candidate = await classifyMemory(input.messages);
+  const candidate =
+    await classifyMemory(input.messages) ??
+    (input.memoryMode === "api_key" ? buildApiKeyFallbackCandidate(input.messages) : null);
 
   if (!candidate) {
     return null;
