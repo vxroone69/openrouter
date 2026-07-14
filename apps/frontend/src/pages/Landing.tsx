@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { useElysiaClient } from "@/providers/Eden";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +68,8 @@ function BrandMark({ mark }: { mark: string }) {
 
 export function Landing() {
     const elysiaClient = useElysiaClient();
+    const [searchParams] = useSearchParams();
+    const showPublicLanding = searchParams.get("public") === "1";
     const profileQuery = useQuery({
         queryKey: ["user-profile"],
         queryFn: async () => {
@@ -79,7 +81,7 @@ export function Landing() {
         staleTime: 15_000,
     });
 
-    if (profileQuery.isSuccess) {
+    if (profileQuery.isSuccess && !showPublicLanding) {
         return <Navigate to="/dashboard" replace />;
     }
 

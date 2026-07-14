@@ -1,7 +1,7 @@
 import { useElysiaClient } from "@/providers/Eden";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,16 @@ export function Signup() {
     const passwordRef = useRef<HTMLInputElement>(null);
     const elysiaClient = useElysiaClient();
     const navigate = useNavigate();
+
+    const profileQuery = useQuery({
+        queryKey: ["user-profile"],
+        queryFn: async () => {
+            const response = await elysiaClient.auth.profile.get();
+            if (response.error) throw new Error("Unauthorized");
+            return response.data;
+        },
+        retry: false,
+    });
 
     const mutation = useMutation({
         mutationFn: async ({
@@ -44,6 +54,21 @@ export function Signup() {
         },
     });
 
+    if (profileQuery.isLoading) {
+        return (
+            <div className="dark min-h-screen bg-background flex items-center justify-center">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Loading...
+                </div>
+            </div>
+        );
+    }
+
+    if (profileQuery.isSuccess) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
     return (
         <div className="dark min-h-screen relative flex items-center justify-center bg-background overflow-hidden px-4 py-10">
             <div
@@ -60,7 +85,7 @@ export function Signup() {
                 asChild
                 className="absolute left-4 top-4 z-20 text-muted-foreground hover:text-foreground sm:left-6 sm:top-6"
             >
-                <Link to="/">
+                <Link to="/?public=1">
                     <ArrowLeft className="size-4" />
                     Back
                 </Link>

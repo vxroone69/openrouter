@@ -73,7 +73,7 @@ export function Docs() {
                 <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-3">
                         <Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-foreground">
-                            <Link to="/" aria-label="Back to landing page">
+                            <Link to="/?public=1" aria-label="Back to landing page">
                                 <ArrowLeft className="size-4" />
                             </Link>
                         </Button>
