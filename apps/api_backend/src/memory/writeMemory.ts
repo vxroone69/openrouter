@@ -296,17 +296,25 @@ async function persistEmbedding(memoryId: number, content: string) {
 export async function writeMemoryFromChatTurn(input: {
   userId: number;
   apiKeyId: number;
+  memoryMode?: "none" | "user" | "api_key";
   messages: Messages;
   assistantOutput: string;
   model: string;
 }) {
+  if (input.memoryMode === "none") {
+    return null;
+  }
+
   const candidate = await classifyMemory(input.messages);
 
   if (!candidate) {
     return null;
   }
 
-  const resolvedApiKeyId = candidate.owner === "api_key" ? input.apiKeyId : null;
+  const resolvedApiKeyId =
+    input.memoryMode === "api_key" || candidate.owner === "api_key"
+      ? input.apiKeyId
+      : null;
 
   const existing = await prisma.memory.findFirst({
     where: {

@@ -210,6 +210,7 @@ const app = new Elysia()
       void writeMemoryFromChatTurn({
         userId: apiKeydb.user.id,
         apiKeyId: apiKeydb.id,
+        memoryMode,
         messages: body.messages,
         assistantOutput,
         model,

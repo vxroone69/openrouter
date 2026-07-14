@@ -451,7 +451,7 @@ export function Playground() {
 
             const response = await elysiaClient.memory.post({
                 content: lastTurnPrompt.trim(),
-                scope: memoryMode === "api_key" ? "project" : "user",
+                scope: memoryMode === "api_key" ? "semantic" : "user",
                 source: "playground/manual",
                 importance: 0.5,
                 apiKeyId: memoryMode === "api_key" ? selectedApiKey.id : undefined,
