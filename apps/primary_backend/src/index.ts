@@ -8,10 +8,13 @@ import { app as memoryApp } from "./modules/memory";
 import { app as analyticsApp } from "./modules/analytics";
 import { app as paymentsApp } from "./modules/payments";
 
+const port = Number(process.env.PORT ?? 3000);
+const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3001";
+
 export const app = new Elysia()
     .use(
         cors({
-            origin: "http://localhost:3001",
+            origin: frontendOrigin,
             credentials: true,
         })
     )
@@ -21,7 +24,7 @@ export const app = new Elysia()
     .use(memoryApp)
     .use(analyticsApp)
     .use(paymentsApp)
-    .listen(3000);
+    .listen(port);
 
 console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
 

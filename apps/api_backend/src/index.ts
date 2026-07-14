@@ -98,9 +98,12 @@ function buildCostAccounting({
   };
 }
 
+const port = Number(process.env.PORT ?? 3002);
+const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3001";
+
 const app = new Elysia()
   .use(cors({
-    origin: "http://localhost:3001",
+    origin: frontendOrigin,
     credentials: true,
   }))
   .use(bearer())
@@ -590,6 +593,6 @@ const app = new Elysia()
       memoryTokenBudget: t.Optional(t.String()),
     })
   })
-  .listen(3002);
+  .listen(port);
 
 console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
