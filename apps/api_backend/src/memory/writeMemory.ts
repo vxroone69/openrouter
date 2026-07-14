@@ -145,7 +145,7 @@ function buildCandidateFromRules(text: string): MemoryCandidate | null {
 
   return {
     content: clipMemoryText(text),
-    scope: "conversation",
+    scope: "semantic",
     owner: "api_key",
     confidence: 0.72,
     importance: 0.4,
@@ -315,17 +315,24 @@ export async function writeMemoryFromChatTurn(input: {
     return null;
   }
 
-  const resolvedApiKeyId =
-    input.memoryMode === "api_key" || candidate.owner === "api_key"
-      ? input.apiKeyId
-      : null;
+  const effectiveCandidate: MemoryCandidate =
+    input.memoryMode === "api_key"
+      ? {
+        ...candidate,
+        owner: "api_key",
+        scope: candidate.scope === "user" ? "semantic" : candidate.scope,
+        reasoning: `${candidate.reasoning} Forced to API-key ownership by memory=api_key.`,
+      }
+      : candidate;
+
+  const resolvedApiKeyId = effectiveCandidate.owner === "api_key" ? input.apiKeyId : null;
 
   const existing = await prisma.memory.findFirst({
     where: {
       userId: input.userId,
       apiKeyId: resolvedApiKeyId,
-      scope: candidate.scope,
-      content: candidate.content,
+      scope: effectiveCandidate.scope,
+      content: effectiveCandidate.content,
       archived: false,
     },
     select: {
@@ -340,8 +347,8 @@ export async function writeMemoryFromChatTurn(input: {
       },
       data: {
         lastUsedAt: new Date(),
-        confidence: Math.min(1, candidate.confidence + 0.05),
-        importance: Math.min(1, candidate.importance + 0.1),
+        confidence: Math.min(1, effectiveCandidate.confidence + 0.05),
+        importance: Math.min(1, effectiveCandidate.importance + 0.1),
       },
     });
 
@@ -352,13 +359,13 @@ export async function writeMemoryFromChatTurn(input: {
     data: {
       userId: input.userId,
       apiKeyId: resolvedApiKeyId,
-      scope: candidate.scope,
-      content: candidate.content,
+      scope: effectiveCandidate.scope,
+      content: effectiveCandidate.content,
       source: `chat:${input.model}`,
-      savedBy: candidate.savedBy,
-      reasoning: candidate.reasoning,
-      confidence: candidate.confidence,
-      importance: candidate.importance,
+      savedBy: effectiveCandidate.savedBy,
+      reasoning: effectiveCandidate.reasoning,
+      confidence: effectiveCandidate.confidence,
+      importance: effectiveCandidate.importance,
       lastUsedAt: new Date(),
     },
   });
