@@ -321,9 +321,7 @@ export function Playground() {
                     const data = parseSSEChunk(rawEvent);
                     if (data === "[DONE]") {
                         streamDone = true;
-                        await reader.cancel().catch(() => undefined);
-                        boundaryIndex = buffer.indexOf("\n\n");
-                        continue;
+                        break;
                     }
 
                     if (data) {
@@ -341,6 +339,10 @@ export function Playground() {
                         const delta = event.choices?.[0]?.delta?.content ?? "";
                         if (delta) {
                             await renderDelta(delta);
+                        }
+
+                        if (event.choices?.[0]?.finish_reason) {
+                            streamDone = true;
                         }
 
                         if (event.usage) {
