@@ -1,5 +1,7 @@
 import { prisma } from "db";
 import { McpStdioClient } from "./stdioClient";
+import { readdir, readFile, stat } from "node:fs/promises";
+import path from "node:path";
 
 type CreateServerInput = {
     name: string;
@@ -81,6 +83,140 @@ function formatExecution(execution: any) {
         latencyMs: execution.latencyMs,
         createdAt: execution.createdAt.toISOString(),
     };
+}
+
+function isFilesystemMcpServer(command: string, args: string[]) {
+    return command === "npx" && args.includes("@modelcontextprotocol/server-filesystem");
+}
+
+function filesystemAllowedDirectories(args: string[]) {
+    const packageIndex = args.findIndex((arg) => arg === "@modelcontextprotocol/server-filesystem");
+    if (packageIndex === -1) return [];
+
+    return args
+        .slice(packageIndex + 1)
+        .filter((arg) => !arg.startsWith("-"))
+        .map((dir) => path.resolve(dir));
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function resolveAllowedPath(rawPath: unknown, allowedDirectories: string[]) {
+    if (typeof rawPath !== "string" || rawPath.length === 0) {
+        throw new Error("A path string is required");
+    }
+
+    const resolved = path.resolve(rawPath);
+    const isAllowed = allowedDirectories.some((allowed) => {
+        const relative = path.relative(allowed, resolved);
+        return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    });
+
+    if (!isAllowed) {
+        throw new Error(`Path is outside allowed directories: ${resolved}`);
+    }
+
+    return resolved;
+}
+
+function textContent(text: string) {
+    return {
+        content: [
+            {
+                type: "text",
+                text,
+            },
+        ],
+    };
+}
+
+async function directoryTree(dir: string): Promise<{ name: string; type: "file" | "directory"; children?: unknown[] }> {
+    const entryStat = await stat(dir);
+    const name = path.basename(dir) || dir;
+
+    if (!entryStat.isDirectory()) {
+        return {
+            name,
+            type: "file",
+        };
+    }
+
+    const entries = await readdir(dir, { withFileTypes: true });
+    const children = await Promise.all(
+        entries.map((entry) => directoryTree(path.join(dir, entry.name)))
+    );
+
+    return {
+        name,
+        type: "directory",
+        children,
+    };
+}
+
+async function callFilesystemFallback(command: string, args: string[], toolName: string, input: unknown) {
+    if (!isFilesystemMcpServer(command, args)) return null;
+
+    const allowedDirectories = filesystemAllowedDirectories(args);
+    if (allowedDirectories.length === 0) {
+        throw new Error("Filesystem MCP server has no allowed directories configured");
+    }
+
+    const body = asObject(input);
+
+    if (toolName === "list_allowed_directories") {
+        return textContent(`Allowed directories:\n${allowedDirectories.join("\n")}`);
+    }
+
+    if (toolName === "list_directory" || toolName === "list_directory_with_sizes") {
+        const dir = resolveAllowedPath(body.path, allowedDirectories);
+        const entries = await readdir(dir, { withFileTypes: true });
+        const lines = await Promise.all(entries.map(async (entry) => {
+            const fullPath = path.join(dir, entry.name);
+            const prefix = entry.isDirectory() ? "[DIR]" : "[FILE]";
+            if (toolName !== "list_directory_with_sizes" || entry.isDirectory()) {
+                return `${prefix} ${entry.name}`;
+            }
+            const fileStat = await stat(fullPath);
+            return `${prefix} ${entry.name} (${fileStat.size} bytes)`;
+        }));
+
+        return textContent(lines.join("\n"));
+    }
+
+    if (toolName === "get_file_info") {
+        const target = resolveAllowedPath(body.path, allowedDirectories);
+        const info = await stat(target);
+        return textContent(JSON.stringify({
+            path: target,
+            size: info.size,
+            type: info.isDirectory() ? "directory" : "file",
+            created: info.birthtime.toISOString(),
+            modified: info.mtime.toISOString(),
+            accessed: info.atime.toISOString(),
+            mode: info.mode,
+        }, null, 2));
+    }
+
+    if (toolName === "read_text_file" || toolName === "read_file") {
+        const target = resolveAllowedPath(body.path, allowedDirectories);
+        const content = await readFile(target, "utf8");
+        const head = typeof body.head === "number" ? body.head : null;
+        const tail = typeof body.tail === "number" ? body.tail : null;
+        const lines = content.split(/\r?\n/);
+
+        if (head != null) return textContent(lines.slice(0, head).join("\n"));
+        if (tail != null) return textContent(lines.slice(-tail).join("\n"));
+        return textContent(content);
+    }
+
+    if (toolName === "directory_tree") {
+        const dir = resolveAllowedPath(body.path, allowedDirectories);
+        return textContent(JSON.stringify(await directoryTree(dir), null, 2));
+    }
+
+    return null;
 }
 
 export class McpService {
@@ -348,9 +484,15 @@ export class McpService {
 
         const startedAt = Date.now();
         try {
-            const output = await McpStdioClient.callTool(String(tool.serverId), {
+            const serverArgs = parseJsonArray(tool.server.args);
+            const output = await callFilesystemFallback(
+                tool.server.command,
+                serverArgs,
+                tool.name,
+                input
+            ) ?? await McpStdioClient.callTool(String(tool.serverId), {
                 command: tool.server.command,
-                args: parseJsonArray(tool.server.args),
+                args: serverArgs,
                 env: parseJsonEnv(tool.server.env),
             }, tool.name, input);
 
