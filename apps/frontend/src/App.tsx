@@ -12,7 +12,7 @@ import { Docs } from "./pages/Docs";
 import { Models } from "./pages/Models";
 import { Landing } from "./pages/Landing";
 import { Playground } from "./pages/Playground";
-import { Mcp } from "./pages/Mcp";
+import { McpRoute } from "./pages/Mcp";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ElysiaClientContextProvider } from "./providers/Eden";
 import { treaty } from "@elysiajs/eden";
@@ -51,7 +51,7 @@ export function App() {
               <Route path={"/analytics"} element={<ProtectedRoute><Analytics /></ProtectedRoute>} /> 
               <Route path={"/playground"} element={<ProtectedRoute><Playground /></ProtectedRoute>} /> 
               <Route path={"/memory"} element={<ProtectedRoute><Memory /></ProtectedRoute>} /> 
-              <Route path={"/mcp"} element={<ProtectedRoute><Mcp /></ProtectedRoute>} /> 
+              <Route path={"/mcp"} element={<ProtectedRoute><McpRoute /></ProtectedRoute>} /> 
               <Route path={"/credits"} element={<ProtectedRoute><Credits /></ProtectedRoute>} /> 
               <Route path={"/api-keys"} element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} /> 
             </Routes>

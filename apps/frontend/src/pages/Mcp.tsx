@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Component, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertCircle,
@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useElysiaClient } from "@/providers/Eden";
+import { primaryBackendUrl } from "@/config/api";
 
 type McpTool = {
     id: string;
@@ -61,6 +61,24 @@ type ApiKeyRow = {
     disabled: boolean;
 };
 
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(new URL(path, primaryBackendUrl), {
+        ...init,
+        credentials: "include",
+        headers: {
+            "content-type": "application/json",
+            ...init?.headers,
+        },
+    });
+
+    if (!response.ok) {
+        const value = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(value?.message || `Request failed with status ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
+}
+
 function parseArgs(raw: string) {
     return raw
         .split(/\s+/)
@@ -79,7 +97,6 @@ function pretty(value: unknown) {
 }
 
 export function Mcp() {
-    const elysiaClient = useElysiaClient();
     const queryClient = useQueryClient();
     const [name, setName] = useState("");
     const [command, setCommand] = useState("");
@@ -93,19 +110,14 @@ export function Mcp() {
 
     const mcpQuery = useQuery({
         queryKey: ["mcp"],
-        queryFn: async () => {
-            const response = await elysiaClient.mcp.get();
-            if (response.error) throw new Error("Failed to load MCP servers");
-            return response.data as { servers: McpServer[]; executions: McpExecution[] };
-        },
+        queryFn: () => apiRequest<{ servers: McpServer[]; executions: McpExecution[] }>("/mcp"),
     });
 
     const apiKeysQuery = useQuery({
         queryKey: ["api-keys"],
         queryFn: async () => {
-            const response = await elysiaClient["api-keys"].get();
-            if (response.error) throw new Error("Failed to load API keys");
-            return response.data.apiKeys as ApiKeyRow[];
+            const data = await apiRequest<{ apiKeys: ApiKeyRow[] }>("/api-keys");
+            return data.apiKeys;
         },
     });
 
@@ -113,23 +125,23 @@ export function Mcp() {
         queryKey: ["mcp-api-key-tools", selectedApiKeyId],
         enabled: Boolean(selectedApiKeyId),
         queryFn: async () => {
-            const response = await elysiaClient.mcp["api-keys"]({ apiKeyId: selectedApiKeyId }).tools.get();
-            if (response.error) throw new Error("Failed to load API-key tools");
-            return response.data.tools as McpTool[];
+            const data = await apiRequest<{ tools: McpTool[] }>(`/mcp/api-keys/${selectedApiKeyId}/tools`);
+            return data.tools;
         },
     });
 
     const createServerMutation = useMutation({
         mutationFn: async () => {
             setFormError(null);
-            const response = await elysiaClient.mcp.servers.post({
+            return apiRequest<McpServer>("/mcp/servers", {
+                method: "POST",
+                body: JSON.stringify({
                 name,
                 command,
                 args: parseArgs(args),
                 env: parseEnv(env),
+                }),
             });
-            if (response.error) throw new Error("Failed to create MCP server");
-            return response.data;
         },
         onSuccess: () => {
             setName("");
@@ -145,12 +157,9 @@ export function Mcp() {
 
     const discoverMutation = useMutation({
         mutationFn: async (serverId: string) => {
-            const response = await elysiaClient.mcp.servers({ serverId }).discover.post();
-            if (response.error) {
-                const value = response.error.value as { message?: string } | undefined;
-                throw new Error(value?.message || "Failed to discover tools");
-            }
-            return response.data;
+            return apiRequest<McpServer>(`/mcp/servers/${serverId}/discover`, {
+                method: "POST",
+            });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["mcp"] });
@@ -160,11 +169,10 @@ export function Mcp() {
 
     const permissionMutation = useMutation({
         mutationFn: async ({ toolId, enabled }: { toolId: string; enabled: boolean }) => {
-            const response = await elysiaClient.mcp["api-keys"]({ apiKeyId: selectedApiKeyId }).tools({ toolId }).put({
-                enabled,
+            return apiRequest(`/mcp/api-keys/${selectedApiKeyId}/tools/${toolId}`, {
+                method: "PUT",
+                body: JSON.stringify({ enabled }),
             });
-            if (response.error) throw new Error("Failed to update tool permission");
-            return response.data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["mcp-api-key-tools", selectedApiKeyId] });
@@ -176,16 +184,13 @@ export function Mcp() {
         mutationFn: async () => {
             setCallResult(null);
             const parsedInput = toolInput.trim() ? JSON.parse(toolInput) : {};
-            const response = await elysiaClient.mcp.tools({ toolId: selectedToolId }).call.post({
-                apiKeyId: selectedApiKeyId || undefined,
-                input: parsedInput,
+            return apiRequest<{ output: unknown }>(`/mcp/tools/${selectedToolId}/call`, {
+                method: "POST",
+                body: JSON.stringify({
+                    apiKeyId: selectedApiKeyId || undefined,
+                    input: parsedInput,
+                }),
             });
-            if (response.error) {
-                const value = response.error.value as { message?: string; execution?: unknown } | undefined;
-                if (value?.execution) setCallResult(value.execution);
-                throw new Error(value?.message || "Failed to call MCP tool");
-            }
-            return response.data;
         },
         onSuccess: (data) => {
             setCallResult(data.output);
@@ -278,7 +283,12 @@ export function Mcp() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {mcpQuery.isLoading ? (
+                            {mcpQuery.isError ? (
+                                <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                                    {mcpQuery.error.message}
+                                </div>
+                            ) : mcpQuery.isLoading ? (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Loader2 className="size-4 animate-spin" />
                                     Loading MCP servers...
@@ -374,7 +384,11 @@ export function Mcp() {
                             </Select>
                         </div>
 
-                        {!selectedApiKeyId ? (
+                        {apiKeysQuery.isError ? (
+                            <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+                                {apiKeysQuery.error.message}
+                            </div>
+                        ) : !selectedApiKeyId ? (
                             <div className="rounded-lg border border-dashed border-border/50 p-6 text-sm text-muted-foreground">
                                 Select an API key to manage tool permissions.
                             </div>
@@ -382,6 +396,10 @@ export function Mcp() {
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Loader2 className="size-4 animate-spin" />
                                 Loading tool permissions...
+                            </div>
+                        ) : apiKeyToolsQuery.isError ? (
+                            <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+                                {apiKeyToolsQuery.error.message}
                             </div>
                         ) : visibleTools.length === 0 ? (
                             <div className="rounded-lg border border-dashed border-border/50 p-6 text-sm text-muted-foreground">
@@ -515,5 +533,43 @@ export function Mcp() {
                 </div>
             </div>
         </DashboardLayout>
+    );
+}
+
+class McpErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+    override state: { error: Error | null } = { error: null };
+
+    static getDerivedStateFromError(error: Error) {
+        return { error };
+    }
+
+    override render() {
+        if (!this.state.error) return this.props.children;
+
+        return (
+            <DashboardLayout>
+                <Card className="bg-card/30 border-destructive/30">
+                    <CardHeader>
+                        <CardTitle className="text-lg">MCP failed to load</CardTitle>
+                        <CardDescription>
+                            The page hit a frontend runtime error instead of rendering normally.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <pre className="overflow-auto rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+{this.state.error.message}
+                        </pre>
+                    </CardContent>
+                </Card>
+            </DashboardLayout>
+        );
+    }
+}
+
+export function McpRoute() {
+    return (
+        <McpErrorBoundary>
+            <Mcp />
+        </McpErrorBoundary>
     );
 }
