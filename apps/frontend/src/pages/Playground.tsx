@@ -375,7 +375,7 @@ export function Playground() {
                 setLastUsage(usage);
                 setLastLatencyMs(Math.round(performance.now() - startedAt));
                 setMcpTrace(debugTrace);
-                setTraceTabState(debugTrace && debugTrace.mcpToolCalls.length > 0 ? "open" : "closed");
+                setTraceTabState(debugTrace ? "open" : "closed");
                 setStatus("done");
                 return;
             }
@@ -934,6 +934,11 @@ export function Playground() {
                                         </div>
 
                                         <div className="space-y-3">
+                                            {mcpTrace.mcpToolCalls.length === 0 && (
+                                                <div className="rounded-md border border-border/50 bg-black/20 p-3 text-sm leading-6 text-muted-foreground">
+                                                    No MCP tool was executed for this request. Check that the selected API key has tool access enabled on the MCP page, then try a prompt that includes the target path, such as <span className="font-mono text-foreground">List the files in /tmp.</span>
+                                                </div>
+                                            )}
                                             {mcpTrace.mcpToolCalls.map((call, index) => (
                                                 <div key={`${call.toolId}-${index}`} className="rounded-md border border-border/50 bg-black/20 p-3">
                                                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
