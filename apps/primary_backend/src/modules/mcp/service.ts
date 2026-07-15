@@ -133,6 +133,8 @@ export class McpService {
     }
 
     static async updateServer(userId: number, serverId: number, input: UpdateServerInput) {
+        await McpStdioClient.stopSession(String(serverId));
+
         const server = await prisma.mcpServer.update({
             where: {
                 id: serverId,
@@ -158,6 +160,8 @@ export class McpService {
     }
 
     static async deleteServer(userId: number, serverId: number) {
+        await McpStdioClient.stopSession(String(serverId));
+
         await prisma.mcpServer.delete({
             where: {
                 id: serverId,
@@ -175,7 +179,7 @@ export class McpService {
             },
         });
 
-        const tools = await McpStdioClient.discoverTools({
+        const tools = await McpStdioClient.discoverTools(String(server.id), {
             command: server.command,
             args: parseJsonArray(server.args),
             env: parseJsonEnv(server.env),
@@ -344,7 +348,7 @@ export class McpService {
 
         const startedAt = Date.now();
         try {
-            const output = await McpStdioClient.callTool({
+            const output = await McpStdioClient.callTool(String(tool.serverId), {
                 command: tool.server.command,
                 args: parseJsonArray(tool.server.args),
                 env: parseJsonEnv(tool.server.env),
