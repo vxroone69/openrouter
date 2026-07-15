@@ -61,6 +61,76 @@ type ApiKeyRow = {
     disabled: boolean;
 };
 
+function asArray<T>(value: unknown): T[] {
+    return Array.isArray(value) ? value as T[] : [];
+}
+
+function normalizeTool(raw: unknown): McpTool | null {
+    if (!raw || typeof raw !== "object") return null;
+    const value = raw as Partial<McpTool>;
+    if (value.id == null || value.name == null) return null;
+
+    return {
+        id: String(value.id),
+        serverId: String(value.serverId ?? ""),
+        name: String(value.name),
+        description: typeof value.description === "string" ? value.description : null,
+        inputSchema: value.inputSchema ?? null,
+        enabled: Boolean(value.enabled),
+        allowed: Boolean(value.allowed),
+        serverName: typeof value.serverName === "string" ? value.serverName : undefined,
+    };
+}
+
+function normalizeServer(raw: unknown): McpServer | null {
+    if (!raw || typeof raw !== "object") return null;
+    const value = raw as Partial<McpServer>;
+    if (value.id == null || value.name == null) return null;
+
+    return {
+        id: String(value.id),
+        name: String(value.name),
+        command: String(value.command ?? ""),
+        args: asArray<string>(value.args),
+        env: value.env && typeof value.env === "object" && !Array.isArray(value.env)
+            ? value.env as Record<string, string>
+            : {},
+        enabled: Boolean(value.enabled),
+        lastDiscoveredAt: typeof value.lastDiscoveredAt === "string" ? value.lastDiscoveredAt : null,
+        tools: asArray<unknown>(value.tools).map(normalizeTool).filter((tool): tool is McpTool => Boolean(tool)),
+    };
+}
+
+function normalizeExecution(raw: unknown): McpExecution | null {
+    if (!raw || typeof raw !== "object") return null;
+    const value = raw as Partial<McpExecution>;
+    if (value.id == null || value.toolName == null) return null;
+
+    return {
+        id: String(value.id),
+        apiKeyId: value.apiKeyId == null ? null : String(value.apiKeyId),
+        toolName: String(value.toolName),
+        status: value.status === "error" ? "error" : "success",
+        input: value.input ?? null,
+        output: value.output ?? null,
+        error: typeof value.error === "string" ? value.error : null,
+        latencyMs: Number(value.latencyMs ?? 0),
+        createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+    };
+}
+
+function normalizeApiKey(raw: unknown): ApiKeyRow | null {
+    if (!raw || typeof raw !== "object") return null;
+    const value = raw as Partial<ApiKeyRow>;
+    if (value.id == null || value.name == null) return null;
+
+    return {
+        id: String(value.id),
+        name: String(value.name),
+        disabled: Boolean(value.disabled),
+    };
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(new URL(path, primaryBackendUrl), {
         ...init,
@@ -110,14 +180,20 @@ export function Mcp() {
 
     const mcpQuery = useQuery({
         queryKey: ["mcp"],
-        queryFn: () => apiRequest<{ servers: McpServer[]; executions: McpExecution[] }>("/mcp"),
+        queryFn: async () => {
+            const data = await apiRequest<{ servers?: unknown; executions?: unknown }>("/mcp");
+            return {
+                servers: asArray<unknown>(data.servers).map(normalizeServer).filter((server): server is McpServer => Boolean(server)),
+                executions: asArray<unknown>(data.executions).map(normalizeExecution).filter((execution): execution is McpExecution => Boolean(execution)),
+            };
+        },
     });
 
     const apiKeysQuery = useQuery({
         queryKey: ["api-keys"],
         queryFn: async () => {
-            const data = await apiRequest<{ apiKeys: ApiKeyRow[] }>("/api-keys");
-            return data.apiKeys;
+            const data = await apiRequest<{ apiKeys?: unknown }>("/api-keys");
+            return asArray<unknown>(data.apiKeys).map(normalizeApiKey).filter((key): key is ApiKeyRow => Boolean(key));
         },
     });
 
@@ -125,8 +201,8 @@ export function Mcp() {
         queryKey: ["mcp-api-key-tools", selectedApiKeyId],
         enabled: Boolean(selectedApiKeyId),
         queryFn: async () => {
-            const data = await apiRequest<{ tools: McpTool[] }>(`/mcp/api-keys/${selectedApiKeyId}/tools`);
-            return data.tools;
+            const data = await apiRequest<{ tools?: unknown }>(`/mcp/api-keys/${selectedApiKeyId}/tools`);
+            return asArray<unknown>(data.tools).map(normalizeTool).filter((tool): tool is McpTool => Boolean(tool));
         },
     });
 
@@ -136,10 +212,10 @@ export function Mcp() {
             return apiRequest<McpServer>("/mcp/servers", {
                 method: "POST",
                 body: JSON.stringify({
-                name,
-                command,
-                args: parseArgs(args),
-                env: parseEnv(env),
+                    name,
+                    command,
+                    args: parseArgs(args),
+                    env: parseEnv(env),
                 }),
             });
         },
