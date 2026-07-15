@@ -54,6 +54,10 @@ function safeToolName(id: number, name: string) {
   return `mcp_${id}_${name.replace(/[^a-zA-Z0-9_]/g, "_")}`;
 }
 
+function estimateTokens(text: string) {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
 function parseJsonArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
@@ -240,23 +244,73 @@ export async function getEnabledMcpToolsForApiKey(userId: number, apiKeyId: numb
   }));
 }
 
+function latestUserText(messages: Messages) {
+  return [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+}
+
+function rankToolForPrompt(tool: EnabledTool, prompt: string) {
+  const lowerPrompt = prompt.toLowerCase();
+  const lowerName = tool.name.toLowerCase();
+  let score = 0;
+
+  if (lowerPrompt.includes("/tmp") && isFilesystemMcpServer(tool.command, tool.args)) score += 6;
+  if (lowerPrompt.includes("list") && lowerName.includes("list")) score += 5;
+  if (lowerPrompt.includes("director") && lowerName.includes("director")) score += 5;
+  if (lowerPrompt.includes("file") && lowerName.includes("file")) score += 3;
+  if (lowerPrompt.includes("read") && lowerName.includes("read")) score += 5;
+  if (lowerPrompt.includes("tree") && lowerName.includes("tree")) score += 5;
+  if (lowerPrompt.includes("info") && lowerName.includes("info")) score += 4;
+  if (lowerName === "list_directory") score += 2;
+  if (lowerName === "list_allowed_directories") score += 1;
+
+  return score;
+}
+
+function selectRelevantTools(tools: EnabledTool[], messages: Messages) {
+  const prompt = latestUserText(messages);
+  const ranked = tools
+    .map((tool) => ({
+      tool,
+      score: rankToolForPrompt(tool, prompt),
+    }))
+    .sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name));
+
+  const relevant = ranked.filter((row) => row.score > 0).map((row) => row.tool);
+  return (relevant.length > 0 ? relevant : ranked.map((row) => row.tool)).slice(0, 4);
+}
+
+function compactToolSignature(tool: EnabledTool) {
+  if (tool.name === "list_allowed_directories") return `${tool.exposedName}({})`;
+  if (tool.name === "list_directory") return `${tool.exposedName}({"path":"/tmp"})`;
+  if (tool.name === "list_directory_with_sizes") return `${tool.exposedName}({"path":"/tmp"})`;
+  if (tool.name === "read_text_file" || tool.name === "read_file") return `${tool.exposedName}({"path":"/tmp/file.txt"})`;
+  if (tool.name === "get_file_info") return `${tool.exposedName}({"path":"/tmp/file_or_dir"})`;
+  if (tool.name === "directory_tree") return `${tool.exposedName}({"path":"/tmp"})`;
+
+  return `${tool.exposedName}(${JSON.stringify(tool.inputSchema ?? {})})`;
+}
+
+function compactToolDescription(tool: EnabledTool) {
+  if (tool.name === "list_allowed_directories") return "show allowed filesystem roots";
+  if (tool.name === "list_directory") return "list files and folders in a directory";
+  if (tool.name === "list_directory_with_sizes") return "list directory entries with file sizes";
+  if (tool.name === "read_text_file" || tool.name === "read_file") return "read a text file";
+  if (tool.name === "get_file_info") return "get file or directory metadata";
+  if (tool.name === "directory_tree") return "show recursive directory tree";
+
+  return (tool.description ?? "tool").replace(/\s+/g, " ").slice(0, 120);
+}
+
 function buildToolInstruction(tools: EnabledTool[]) {
   const toolLines = tools.map((tool) => {
-    return [
-      `- ${tool.exposedName}`,
-      `  original_name: ${tool.name}`,
-      `  server: ${tool.serverName}`,
-      `  description: ${tool.description ?? "No description"}`,
-      `  input_schema: ${JSON.stringify(tool.inputSchema ?? {})}`,
-    ].join("\n");
+    return `- ${compactToolSignature(tool)}: ${compactToolDescription(tool)}`;
   }).join("\n");
 
   return [
-    "Synapse has enabled MCP tools for this API key.",
-    "If a tool is needed to answer the user, respond with ONLY this JSON shape and no markdown:",
+    "MCP tools are available. Use one only when needed.",
+    "To call a tool, reply ONLY as JSON:",
     "{\"tool_call\":{\"tool\":\"TOOL_NAME\",\"arguments\":{}}}",
-    "If no tool is needed, answer normally.",
-    "Available tools:",
+    "Otherwise answer normally.",
     toolLines,
   ].join("\n\n");
 }
@@ -362,11 +416,13 @@ export async function runMcpToolCallingLoop({
     return { usedTools: false };
   }
 
-  const byName = new Map(tools.map((tool) => [tool.exposedName, tool]));
+  const selectedTools = selectRelevantTools(tools, messages);
+  const byName = new Map(selectedTools.map((tool) => [tool.exposedName, tool]));
+  const toolInstruction = buildToolInstruction(selectedTools);
   const firstResult = await runProvider({
     providers,
     modelName,
-    messages: withToolInstruction(messages, tools),
+    messages: withToolInstruction(messages, selectedTools),
     cacheableContext,
   });
 
@@ -384,7 +440,7 @@ export async function runMcpToolCallingLoop({
       traces: [],
       inputTokensConsumed: firstResult.response.inputTokensConsumed,
       outputTokensConsumed: firstResult.response.outputTokensConsumed,
-      providerToolPromptTokens: 0,
+      providerToolPromptTokens: estimateTokens(toolInstruction),
     };
   }
 
@@ -449,7 +505,7 @@ export async function runMcpToolCallingLoop({
       content: [
         `Synapse executed MCP tool ${tool.exposedName}.`,
         `Tool result JSON: ${JSON.stringify(toolOutput)}`,
-        "Use this tool result to answer the original user request. Do not mention internal tool JSON unless useful.",
+        "Answer the original user request in 1-3 concise sentences. Do not speculate beyond the tool result.",
       ].join("\n\n"),
     },
   ];
@@ -469,7 +525,7 @@ export async function runMcpToolCallingLoop({
       traces,
       inputTokensConsumed: firstResult.response.inputTokensConsumed,
       outputTokensConsumed: firstResult.response.outputTokensConsumed,
-      providerToolPromptTokens: 0,
+      providerToolPromptTokens: estimateTokens(toolInstruction),
     };
   }
 
@@ -480,6 +536,6 @@ export async function runMcpToolCallingLoop({
     traces,
     inputTokensConsumed: firstResult.response.inputTokensConsumed + finalResult.response.inputTokensConsumed,
     outputTokensConsumed: firstResult.response.outputTokensConsumed + finalResult.response.outputTokensConsumed,
-    providerToolPromptTokens: firstResult.response.inputTokensConsumed,
+    providerToolPromptTokens: estimateTokens(toolInstruction),
   };
 }
