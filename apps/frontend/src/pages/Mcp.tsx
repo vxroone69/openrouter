@@ -143,6 +143,9 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (!response.ok) {
         const value = await response.json().catch(() => null) as { message?: string } | null;
+        if (response.status === 404 && path.startsWith("/mcp")) {
+            throw new Error("MCP backend route was not found. Redeploy the primary backend with the MCP module.");
+        }
         throw new Error(value?.message || `Request failed with status ${response.status}`);
     }
 
