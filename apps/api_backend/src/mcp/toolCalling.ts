@@ -536,6 +536,7 @@ function detectDeterministicToolIntent(tools: EnabledTool[], messages: Messages)
     listTool &&
     (
       /\b(list|ls|show|display)\b.*\b(files|contents|directory|directories|folder|folders)\b/i.test(prompt) ||
+      /\b(inspect|look|examine|summarize|summarise)\b.*\b(in|inside|contents?|directory|folder)\b/i.test(prompt) ||
       /\b(what'?s|what is|what are)\b.*\b(in|inside)\b/i.test(prompt) ||
       lowerPrompt.startsWith("ls ")
     )
