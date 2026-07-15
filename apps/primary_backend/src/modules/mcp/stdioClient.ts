@@ -22,6 +22,7 @@ export type McpToolDescription = {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const MCP_REQUEST_TIMEOUT_MS = 20_000;
 
 function asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -34,6 +35,10 @@ function parseMessageLine(line: string): JsonRpcResponse | null {
     } catch {
         return null;
     }
+}
+
+function sleep(ms: number) {
+    return new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), ms));
 }
 
 export class McpStdioClient {
@@ -74,10 +79,14 @@ export class McpStdioClient {
         const stderrReader = proc.stderr.getReader();
         const errors: string[] = [];
         void (async () => {
-            while (true) {
-                const chunk = await stderrReader.read();
-                if (chunk.done) break;
-                errors.push(decoder.decode(chunk.value));
+            try {
+                while (true) {
+                    const chunk = await stderrReader.read();
+                    if (chunk.done) break;
+                    errors.push(decoder.decode(chunk.value));
+                }
+            } catch {
+                // The subprocess may be killed while stderr is still being drained.
             }
         })();
 
@@ -88,12 +97,32 @@ export class McpStdioClient {
         };
 
         const waitFor = async (id: number) => {
-            const timeoutAt = Date.now() + 15_000;
+            const timeoutAt = Date.now() + MCP_REQUEST_TIMEOUT_MS;
             let buffer = "";
 
             while (Date.now() < timeoutAt) {
-                const chunk = await reader.read();
-                if (chunk.done) break;
+                const remainingMs = Math.max(1, timeoutAt - Date.now());
+                const outcome = await Promise.race([
+                    reader.read().then((chunk) => ({ kind: "chunk" as const, chunk })),
+                    proc.exited.then((exitCode) => ({ kind: "exit" as const, exitCode })),
+                    sleep(remainingMs),
+                ]);
+
+                if (outcome === "timeout") {
+                    throw new Error(errors.join("").trim() || "Timed out waiting for MCP server response");
+                }
+
+                if (outcome.kind === "exit") {
+                    throw new Error(
+                        errors.join("").trim() ||
+                        `MCP server exited before responding with code ${outcome.exitCode}`
+                    );
+                }
+
+                const { chunk } = outcome;
+                if (chunk.done) {
+                    throw new Error(errors.join("").trim() || "MCP server closed stdout before responding");
+                }
 
                 buffer += decoder.decode(chunk.value, { stream: true });
                 const lines = buffer.split(/\r?\n/);
