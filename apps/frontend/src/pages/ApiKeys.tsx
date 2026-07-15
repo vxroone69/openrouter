@@ -264,7 +264,7 @@ export function ApiKeys() {
                         </Card>
                     ) : (
                         <div className="rounded-lg border border-border/50 bg-card/30 overflow-x-auto">
-                            <table className="w-full min-w-[840px] text-sm">
+                            <table className="w-full min-w-[840px] text-sm text-foreground">
                                 <thead>
                                     <tr className="border-b border-border/50">
                                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Name</th>
@@ -278,7 +278,7 @@ export function ApiKeys() {
                                 <tbody>
                                     {apiKeys.map((key) => (
                                         <tr key={key.id} className="border-b border-border/30 last:border-0 group">
-                                            <td className="px-4 py-3 font-medium">{key.name}</td>
+                                            <td className="px-4 py-3 font-medium text-foreground">{key.name}</td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-1.5">
                                                     <code className="font-mono text-xs text-muted-foreground">
@@ -331,7 +331,7 @@ export function ApiKeys() {
                                             <td className="px-4 py-3 text-muted-foreground">
                                                 {formatLastUsed(key.lastUsed)}
                                             </td>
-                                            <td className="px-4 py-3 text-right tabular-nums">
+                                            <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">
                                                 {(key.creditsConsumed ?? 0).toLocaleString()}
                                             </td>
                                             <td className="px-4 py-3">

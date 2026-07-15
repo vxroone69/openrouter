@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useElysiaClient } from "@/providers/Eden";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import {
@@ -11,17 +11,19 @@ import {
 import { Button } from "@/components/ui/button";
 import {
     Coins,
-    Plus,
     Loader2,
     CheckCircle2,
     AlertCircle,
     Wallet,
     TrendingUp,
 } from "lucide-react";
+import { useState } from "react";
+
+type CreditPackageId = "starter" | "growth" | "scale";
 
 export function Credits() {
     const elysiaClient = useElysiaClient();
-    const queryClient = useQueryClient();
+    const [pendingPackageId, setPendingPackageId] = useState<CreditPackageId | null>(null);
 
     const apiKeysQuery = useQuery({
         queryKey: ["api-keys"],
@@ -42,7 +44,8 @@ export function Credits() {
     })
 
     const checkoutMutation = useMutation({
-        mutationFn: async (packageId: "starter" | "growth" | "scale") => {
+        mutationFn: async (packageId: CreditPackageId) => {
+            setPendingPackageId(packageId);
             const response = await elysiaClient.payments.checkout.post({
                 kind: "credits",
                 packageId,
@@ -55,6 +58,9 @@ export function Credits() {
         },
         onSuccess: (data) => {
             window.location.href = data.url;
+        },
+        onSettled: () => {
+            setPendingPackageId(null);
         },
     });
 
@@ -251,7 +257,9 @@ export function Credits() {
                                     onClick={() => checkoutMutation.mutate(pack.id)}
                                     disabled={checkoutMutation.isPending}
                                 >
-                                    {checkoutMutation.isPending ? "Opening..." : "Checkout"}
+                                    {checkoutMutation.isPending && pendingPackageId === pack.id
+                                        ? "Opening..."
+                                        : "Checkout"}
                                 </Button>
                             </div>
                             ))}

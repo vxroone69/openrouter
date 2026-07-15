@@ -243,9 +243,16 @@ export function Memory() {
         },
     });
 
+    const trimmedTraceRequestId = traceRequestId.trim();
+    const traceRequestIdIsInvalid = Boolean(trimmedTraceRequestId) && !/^\d+$/.test(trimmedTraceRequestId);
+
     const traceMutation = useMutation({
         mutationFn: async () => {
-            const response = await elysiaClient.memory.requests({ requestId: traceRequestId }).get();
+            if (!trimmedTraceRequestId || traceRequestIdIsInvalid) {
+                throw new Error("Enter a numeric request log ID.");
+            }
+
+            const response = await elysiaClient.memory.requests({ requestId: trimmedTraceRequestId }).get();
             if (response.error) throw new Error("Failed to load request trace");
             return response.data as RequestTrace;
         },
@@ -426,29 +433,43 @@ export function Memory() {
                 <Card className="bg-card/30 border-border/50">
                     <CardHeader>
                         <CardTitle className="text-lg">Request memory trace</CardTitle>
-                        <CardDescription>Inspect which memories influenced a specific request log.</CardDescription>
+                        <CardDescription>
+                            Inspect which memories influenced a request by entering its numeric request log ID.
+                        </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            <Input
-                                value={traceRequestId}
-                                onChange={(event) => setTraceRequestId(event.target.value)}
-                                placeholder="Request log ID"
-                                className="bg-black/20"
-                            />
-                            <Button
-                                variant="outline"
-                                onClick={() => traceMutation.mutate()}
-                                disabled={!traceRequestId.trim() || traceMutation.isPending}
-                            >
-                                <Search className="size-4" />
-                                Inspect
-                            </Button>
+                        <div className="space-y-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <Input
+                                    value={traceRequestId}
+                                    onChange={(event) => setTraceRequestId(event.target.value)}
+                                    placeholder="Example: 124"
+                                    inputMode="numeric"
+                                    className="bg-black/20"
+                                />
+                                <Button
+                                    variant="outline"
+                                    onClick={() => traceMutation.mutate()}
+                                    disabled={!trimmedTraceRequestId || traceRequestIdIsInvalid || traceMutation.isPending}
+                                >
+                                    <Search className="size-4" />
+                                    Inspect
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Use a request log ID from Analytics. This field does not search memory text.
+                            </p>
                         </div>
 
-                        {traceMutation.isError && (
+                        {traceRequestIdIsInvalid && (
+                            <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+                                Enter a numeric request log ID, not a keyword.
+                            </div>
+                        )}
+
+                        {traceMutation.isError && !traceRequestIdIsInvalid && (
                             <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                Failed to load request trace.
+                                {traceMutation.error?.message || "Failed to load request trace."}
                             </div>
                         )}
 
