@@ -9,6 +9,7 @@ import { classifyRequestError, scheduleRequestLog } from "./logging/requestLog";
 import { markMemoriesUsed, retrieveMemoryForUser } from "./memory/retrieveMemory";
 import { writeMemoryFromChatTurn } from "./memory/writeMemory";
 import { buildMemoryPrefix } from "./memory/buildMemoryPrefix";
+import { getEnabledMcpToolsForApiKey, runMcpToolCallingLoop } from "./mcp/toolCalling";
 
 function elapsedMs(startedAt: number) {
   return Math.max(0, Math.round(performance.now() - startedAt));
@@ -478,12 +479,26 @@ const app = new Elysia()
       });
     }
 
-    const providerResult = await tryProviderFallback({
+    const enabledMcpTools = await getEnabledMcpToolsForApiKey(apiKeydb.user.id, apiKeydb.id);
+    const toolLoopResult = await runMcpToolCallingLoop({
+      userId: apiKeydb.user.id,
+      apiKeyId: apiKeydb.id,
+      tools: enabledMcpTools,
       providers,
       modelName: providerModelName,
       messages: body.messages,
       cacheableContext: memoryContext,
+      runProvider: tryProviderFallback,
     });
+
+    const providerResult = toolLoopResult.usedTools
+      ? toolLoopResult.providerResult
+      : await tryProviderFallback({
+        providers,
+        modelName: providerModelName,
+        messages: body.messages,
+        cacheableContext: memoryContext,
+      });
 
     if (!providerResult.ok) {
       scheduleRequestLog({
@@ -510,7 +525,13 @@ const app = new Elysia()
       });
     }
 
-    const response = providerResult.response;
+    const response = toolLoopResult.usedTools
+      ? {
+        ...toolLoopResult.response,
+        inputTokensConsumed: toolLoopResult.inputTokensConsumed,
+        outputTokensConsumed: toolLoopResult.outputTokensConsumed,
+      }
+      : providerResult.response;
     const selectedProviderMapping = providerMappingById.get(providerResult.providerMappingId);
     const accounting = selectedProviderMapping
       ? buildCostAccounting({
@@ -544,6 +565,11 @@ const app = new Elysia()
     const output = response.completions.choices
       .map((choice) => choice.message.content)
       .join("\n");
+    const mcpLogDetails = {
+      mcpToolsEnabled: enabledMcpTools.length,
+      mcpToolCalls: toolLoopResult.usedTools ? toolLoopResult.traces : [],
+      mcpToolPlanningPromptTokens: toolLoopResult.usedTools ? toolLoopResult.providerToolPromptTokens : 0,
+    };
 
     await persistUsage({
       providerMappingId: providerResult.providerMappingId,
@@ -574,7 +600,10 @@ const app = new Elysia()
       baseCost: accounting.baseCost,
       memoryCost: accounting.memoryCost,
       cachedSavings: accounting.cachedSavings,
-      costBreakdown: accounting.costBreakdown,
+      costBreakdown: {
+        ...accounting.costBreakdown,
+        ...mcpLogDetails,
+      },
     });
 
     return response;
