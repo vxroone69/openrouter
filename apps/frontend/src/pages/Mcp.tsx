@@ -1,0 +1,519 @@
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    AlertCircle,
+    CheckCircle2,
+    Loader2,
+    Play,
+    Plug,
+    RefreshCw,
+    Server,
+    ShieldCheck,
+    Terminal,
+    Wrench,
+} from "lucide-react";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useElysiaClient } from "@/providers/Eden";
+
+type McpTool = {
+    id: string;
+    serverId: string;
+    name: string;
+    description: string | null;
+    inputSchema: unknown;
+    enabled: boolean;
+    allowed?: boolean;
+    serverName?: string;
+};
+
+type McpServer = {
+    id: string;
+    name: string;
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+    enabled: boolean;
+    lastDiscoveredAt: string | null;
+    tools: McpTool[];
+};
+
+type McpExecution = {
+    id: string;
+    apiKeyId: string | null;
+    toolName: string;
+    status: "success" | "error";
+    input: unknown;
+    output: unknown;
+    error: string | null;
+    latencyMs: number;
+    createdAt: string;
+};
+
+type ApiKeyRow = {
+    id: string;
+    name: string;
+    disabled: boolean;
+};
+
+function parseArgs(raw: string) {
+    return raw
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function parseEnv(raw: string) {
+    if (!raw.trim()) return {};
+    return JSON.parse(raw) as Record<string, string>;
+}
+
+function pretty(value: unknown) {
+    if (value == null) return "";
+    return JSON.stringify(value, null, 2);
+}
+
+export function Mcp() {
+    const elysiaClient = useElysiaClient();
+    const queryClient = useQueryClient();
+    const [name, setName] = useState("");
+    const [command, setCommand] = useState("");
+    const [args, setArgs] = useState("");
+    const [env, setEnv] = useState("");
+    const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
+    const [selectedToolId, setSelectedToolId] = useState("");
+    const [toolInput, setToolInput] = useState("{}");
+    const [formError, setFormError] = useState<string | null>(null);
+    const [callResult, setCallResult] = useState<unknown>(null);
+
+    const mcpQuery = useQuery({
+        queryKey: ["mcp"],
+        queryFn: async () => {
+            const response = await elysiaClient.mcp.get();
+            if (response.error) throw new Error("Failed to load MCP servers");
+            return response.data as { servers: McpServer[]; executions: McpExecution[] };
+        },
+    });
+
+    const apiKeysQuery = useQuery({
+        queryKey: ["api-keys"],
+        queryFn: async () => {
+            const response = await elysiaClient["api-keys"].get();
+            if (response.error) throw new Error("Failed to load API keys");
+            return response.data.apiKeys as ApiKeyRow[];
+        },
+    });
+
+    const apiKeyToolsQuery = useQuery({
+        queryKey: ["mcp-api-key-tools", selectedApiKeyId],
+        enabled: Boolean(selectedApiKeyId),
+        queryFn: async () => {
+            const response = await elysiaClient.mcp["api-keys"]({ apiKeyId: selectedApiKeyId }).tools.get();
+            if (response.error) throw new Error("Failed to load API-key tools");
+            return response.data.tools as McpTool[];
+        },
+    });
+
+    const createServerMutation = useMutation({
+        mutationFn: async () => {
+            setFormError(null);
+            const response = await elysiaClient.mcp.servers.post({
+                name,
+                command,
+                args: parseArgs(args),
+                env: parseEnv(env),
+            });
+            if (response.error) throw new Error("Failed to create MCP server");
+            return response.data;
+        },
+        onSuccess: () => {
+            setName("");
+            setCommand("");
+            setArgs("");
+            setEnv("");
+            queryClient.invalidateQueries({ queryKey: ["mcp"] });
+        },
+        onError: (error) => {
+            setFormError(error instanceof SyntaxError ? "Environment must be valid JSON." : error.message);
+        },
+    });
+
+    const discoverMutation = useMutation({
+        mutationFn: async (serverId: string) => {
+            const response = await elysiaClient.mcp.servers({ serverId }).discover.post();
+            if (response.error) {
+                const value = response.error.value as { message?: string } | undefined;
+                throw new Error(value?.message || "Failed to discover tools");
+            }
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["mcp"] });
+            queryClient.invalidateQueries({ queryKey: ["mcp-api-key-tools"] });
+        },
+    });
+
+    const permissionMutation = useMutation({
+        mutationFn: async ({ toolId, enabled }: { toolId: string; enabled: boolean }) => {
+            const response = await elysiaClient.mcp["api-keys"]({ apiKeyId: selectedApiKeyId }).tools({ toolId }).put({
+                enabled,
+            });
+            if (response.error) throw new Error("Failed to update tool permission");
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["mcp-api-key-tools", selectedApiKeyId] });
+            queryClient.invalidateQueries({ queryKey: ["mcp"] });
+        },
+    });
+
+    const callToolMutation = useMutation({
+        mutationFn: async () => {
+            setCallResult(null);
+            const parsedInput = toolInput.trim() ? JSON.parse(toolInput) : {};
+            const response = await elysiaClient.mcp.tools({ toolId: selectedToolId }).call.post({
+                apiKeyId: selectedApiKeyId || undefined,
+                input: parsedInput,
+            });
+            if (response.error) {
+                const value = response.error.value as { message?: string; execution?: unknown } | undefined;
+                if (value?.execution) setCallResult(value.execution);
+                throw new Error(value?.message || "Failed to call MCP tool");
+            }
+            return response.data;
+        },
+        onSuccess: (data) => {
+            setCallResult(data.output);
+            queryClient.invalidateQueries({ queryKey: ["mcp"] });
+        },
+    });
+
+    const servers = mcpQuery.data?.servers ?? [];
+    const executions = mcpQuery.data?.executions ?? [];
+    const apiKeys = apiKeysQuery.data ?? [];
+    const visibleTools = apiKeyToolsQuery.data ?? [];
+    const selectedTool = useMemo(
+        () => visibleTools.find((tool) => tool.id === selectedToolId),
+        [selectedToolId, visibleTools]
+    );
+
+    const canCreate = name.trim() && command.trim() && !createServerMutation.isPending;
+
+    return (
+        <DashboardLayout>
+            <div className="space-y-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">MCP</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Register MCP servers, discover tools, and control which API keys can use them.
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            queryClient.invalidateQueries({ queryKey: ["mcp"] });
+                            queryClient.invalidateQueries({ queryKey: ["mcp-api-key-tools"] });
+                        }}
+                    >
+                        <RefreshCw className="size-4" />
+                        Refresh
+                    </Button>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                    <Card className="bg-card/30 border-border/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Server className="size-4" />
+                                Register server
+                            </CardTitle>
+                            <CardDescription>
+                                Add a local stdio MCP server command. Synapse runs it when discovering or testing tools.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="mcp-name">Name</Label>
+                                <Input id="mcp-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Local filesystem" />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="mcp-command">Command</Label>
+                                <Input id="mcp-command" value={command} onChange={(event) => setCommand(event.target.value)} placeholder="npx" />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="mcp-args">Args</Label>
+                                <Input id="mcp-args" value={args} onChange={(event) => setArgs(event.target.value)} placeholder="-y @modelcontextprotocol/server-filesystem /tmp" />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="mcp-env">Environment JSON</Label>
+                                <Textarea id="mcp-env" value={env} onChange={(event) => setEnv(event.target.value)} placeholder={'{"GITHUB_TOKEN":"..."}'} />
+                            </div>
+                            <Button disabled={!canCreate} onClick={() => createServerMutation.mutate()}>
+                                {createServerMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plug className="size-4" />}
+                                Add server
+                            </Button>
+
+                            {formError && (
+                                <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    {formError}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-card/30 border-border/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Wrench className="size-4" />
+                                Servers and tools
+                            </CardTitle>
+                            <CardDescription>
+                                Discover tools after adding a server, then grant access from the API-key section below.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {mcpQuery.isLoading ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Loading MCP servers...
+                                </div>
+                            ) : servers.length === 0 ? (
+                                <div className="rounded-lg border border-dashed border-border/50 p-6 text-center text-sm text-muted-foreground">
+                                    No MCP servers registered yet.
+                                </div>
+                            ) : (
+                                servers.map((server) => (
+                                    <div key={server.id} className="rounded-lg border border-border/50 bg-black/20 p-4">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium">{server.name}</p>
+                                                    <span className="rounded-full border border-border/50 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                                        {server.tools.length} tool{server.tools.length === 1 ? "" : "s"}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                                                    {server.command} {server.args.join(" ")}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Last discovered: {server.lastDiscoveredAt ? new Date(server.lastDiscoveredAt).toLocaleString() : "never"}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={discoverMutation.isPending}
+                                                onClick={() => discoverMutation.mutate(server.id)}
+                                            >
+                                                {discoverMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                                                Discover
+                                            </Button>
+                                        </div>
+                                        {server.tools.length > 0 && (
+                                            <div className="mt-4 grid gap-2">
+                                                {server.tools.map((tool) => (
+                                                    <div key={tool.id} className="rounded-md border border-border/40 bg-background/30 px-3 py-2">
+                                                        <p className="text-sm font-medium">{tool.name}</p>
+                                                        {tool.description && (
+                                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{tool.description}</p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+
+                            {discoverMutation.isError && (
+                                <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                                    {discoverMutation.error.message}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Card className="bg-card/30 border-border/50">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <ShieldCheck className="size-4" />
+                            API-key tool access
+                        </CardTitle>
+                        <CardDescription>
+                            Enable only the tools an application key is allowed to call.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="max-w-sm space-y-2">
+                            <Label>API key</Label>
+                            <Select
+                                value={selectedApiKeyId}
+                                onValueChange={(value) => {
+                                    setSelectedApiKeyId(value);
+                                    setSelectedToolId("");
+                                }}
+                            >
+                                <SelectTrigger className="w-full bg-black/20">
+                                    <SelectValue placeholder="Select an API key" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {apiKeys.map((key) => (
+                                        <SelectItem key={key.id} value={key.id}>
+                                            {key.name}{key.disabled ? " (disabled)" : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {!selectedApiKeyId ? (
+                            <div className="rounded-lg border border-dashed border-border/50 p-6 text-sm text-muted-foreground">
+                                Select an API key to manage tool permissions.
+                            </div>
+                        ) : apiKeyToolsQuery.isLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="size-4 animate-spin" />
+                                Loading tool permissions...
+                            </div>
+                        ) : visibleTools.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-border/50 p-6 text-sm text-muted-foreground">
+                                Discover tools from a server before assigning them.
+                            </div>
+                        ) : (
+                            <div className="grid gap-2 md:grid-cols-2">
+                                {visibleTools.map((tool) => (
+                                    <div key={tool.id} className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-black/20 p-3">
+                                        <div>
+                                            <p className="text-sm font-medium">{tool.name}</p>
+                                            <p className="mt-1 text-xs text-muted-foreground">{tool.serverName}</p>
+                                            {tool.description && (
+                                                <p className="mt-2 text-xs leading-5 text-muted-foreground">{tool.description}</p>
+                                            )}
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant={tool.allowed ? "default" : "outline"}
+                                            disabled={permissionMutation.isPending}
+                                            onClick={() => permissionMutation.mutate({ toolId: tool.id, enabled: !tool.allowed })}
+                                        >
+                                            {tool.allowed ? "Enabled" : "Enable"}
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <div className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+                    <Card className="bg-card/30 border-border/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Play className="size-4" />
+                                Manual tool test
+                            </CardTitle>
+                            <CardDescription>
+                                Call an enabled MCP tool through Synapse and log the execution trace.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Tool</Label>
+                                    <Select value={selectedToolId} onValueChange={setSelectedToolId} disabled={!selectedApiKeyId}>
+                                        <SelectTrigger className="w-full bg-black/20">
+                                            <SelectValue placeholder="Select a tool" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {visibleTools.filter((tool) => tool.allowed).map((tool) => (
+                                                <SelectItem key={tool.id} value={tool.id}>
+                                                    {tool.serverName} / {tool.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Input schema</Label>
+                                    <pre className="min-h-9 overflow-x-auto rounded-md border border-border/50 bg-black/20 px-3 py-2 text-xs text-muted-foreground">
+{selectedTool?.inputSchema ? pretty(selectedTool.inputSchema) : "Select a tool"}
+                                    </pre>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="mcp-tool-input">Tool input JSON</Label>
+                                <Textarea
+                                    id="mcp-tool-input"
+                                    value={toolInput}
+                                    onChange={(event) => setToolInput(event.target.value)}
+                                    className="min-h-32 font-mono text-xs"
+                                />
+                            </div>
+                            <Button
+                                disabled={!selectedApiKeyId || !selectedToolId || callToolMutation.isPending}
+                                onClick={() => callToolMutation.mutate()}
+                            >
+                                {callToolMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Terminal className="size-4" />}
+                                Call tool
+                            </Button>
+
+                            {callToolMutation.isError && (
+                                <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    {callToolMutation.error instanceof SyntaxError ? "Tool input must be valid JSON." : callToolMutation.error.message}
+                                </div>
+                            )}
+
+                            {callResult != null && (
+                                <pre className="max-h-96 overflow-auto rounded-lg border border-border/50 bg-black/30 p-3 text-xs text-foreground">
+{pretty(callResult)}
+                                </pre>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-card/30 border-border/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <CheckCircle2 className="size-4" />
+                                Recent tool executions
+                            </CardTitle>
+                            <CardDescription>
+                                Last 10 MCP tool calls routed through Synapse.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                            {executions.length === 0 ? (
+                                <div className="rounded-lg border border-dashed border-border/50 p-6 text-sm text-muted-foreground">
+                                    No MCP tool executions yet.
+                                </div>
+                            ) : executions.map((execution) => (
+                                <div key={execution.id} className="rounded-lg border border-border/50 bg-black/20 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm font-medium">{execution.toolName}</p>
+                                        <span className={execution.status === "success" ? "text-xs text-emerald-400" : "text-xs text-destructive"}>
+                                            {execution.status}
+                                        </span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {execution.latencyMs} ms · {new Date(execution.createdAt).toLocaleString()}
+                                    </p>
+                                    {execution.error && (
+                                        <p className="mt-2 text-xs text-destructive">{execution.error}</p>
+                                    )}
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        </DashboardLayout>
+    );
+}

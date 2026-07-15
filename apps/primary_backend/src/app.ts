@@ -7,6 +7,7 @@ import {app as modelsApp} from "./modules/models"
 import {app as memoryApp} from "./modules/memory"
 import {app as analyticsApp} from "./modules/analytics"
 import {app as paymentsApp} from "./modules/payments"
+import {app as mcpApp} from "./modules/mcp"
 import { prisma } from "db";
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3001";
@@ -20,7 +21,7 @@ export const app = new Elysia()
       service: "synapse-primary-backend",
       status: "ok",
       frontend: frontendOrigin,
-      routes: ["/auth", "/api-keys", "/models", "/memory", "/api/v1/analytics", "/payments"],
+      routes: ["/auth", "/api-keys", "/models", "/memory", "/api/v1/analytics", "/payments", "/mcp"],
       }))
 .get("/health/db", async ({ status }) => {
       try {
@@ -43,6 +44,7 @@ export const app = new Elysia()
 .use(memoryApp)
 .use(analyticsApp)
 .use(paymentsApp)
+.use(mcpApp)
 
 
 export type App = typeof app;
