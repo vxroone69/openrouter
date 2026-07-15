@@ -921,15 +921,15 @@ export function Playground() {
                                         <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
                                             <div className="rounded-md border border-border/50 bg-black/20 p-2">
                                                 <p className="text-muted-foreground">Tools enabled</p>
-                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolsEnabled}</p>
+                                                <p className="mt-1 text-lg font-semibold text-foreground">{mcpTrace.mcpToolsEnabled}</p>
                                             </div>
                                             <div className="rounded-md border border-border/50 bg-black/20 p-2">
                                                 <p className="text-muted-foreground">Calls</p>
-                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolCalls.length}</p>
+                                                <p className="mt-1 text-lg font-semibold text-foreground">{mcpTrace.mcpToolCalls.length}</p>
                                             </div>
                                             <div className="rounded-md border border-border/50 bg-black/20 p-2">
                                                 <p className="text-muted-foreground">Planning tokens</p>
-                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolPlanningPromptTokens}</p>
+                                                <p className="mt-1 text-lg font-semibold text-foreground">{mcpTrace.mcpToolPlanningPromptTokens}</p>
                                             </div>
                                         </div>
 

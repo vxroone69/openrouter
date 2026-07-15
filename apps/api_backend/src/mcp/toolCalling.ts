@@ -801,7 +801,7 @@ function buildToolResultMessages(messages: Messages, tool: EnabledTool, toolOutp
         `Synapse executed MCP tool ${tool.exposedName}.`,
         route ? `Routing: ${route}.` : null,
         `Tool result JSON: ${JSON.stringify(toolOutput)}`,
-        "Answer the original user request in 1-3 concise sentences. Do not speculate beyond the tool result.",
+        "Answer once, in one concise sentence. Do not repeat the same fact. Do not speculate beyond the tool result.",
       ].filter(Boolean).join("\n\n"),
     },
   ];
