@@ -22,7 +22,7 @@ export type McpToolDescription = {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const MCP_REQUEST_TIMEOUT_MS = 20_000;
+const MCP_REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS ?? 60_000);
 
 function asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -109,7 +109,10 @@ export class McpStdioClient {
                 ]);
 
                 if (outcome === "timeout") {
-                    throw new Error(errors.join("").trim() || "Timed out waiting for MCP server response");
+                    throw new Error(
+                        errors.join("").trim() ||
+                        `Timed out waiting for MCP server response from "${server.command} ${server.args.join(" ")}"`
+                    );
                 }
 
                 if (outcome.kind === "exit") {
@@ -140,7 +143,10 @@ export class McpStdioClient {
                 }
             }
 
-            throw new Error(errors.join("").trim() || "Timed out waiting for MCP server response");
+            throw new Error(
+                errors.join("").trim() ||
+                `Timed out waiting for MCP server response from "${server.command} ${server.args.join(" ")}"`
+            );
         };
 
         try {
