@@ -8,6 +8,7 @@ import {
     BookOpen,
     Brain,
     Coins,
+    PlugZap,
     Key,
     MessageSquareText,
     ShieldCheck,
@@ -30,6 +31,11 @@ const features = [
         icon: Brain,
         title: "Memory layer",
         body: "Synapse can retrieve relevant user-level or API-key-level memories, inject them as cacheable context, record which memories were used, and write new memories after successful chat turns. The Memory page lets developers search, edit, archive, restore, merge duplicates, compress selected memories, run automatic compression, and inspect request-level memory traces.",
+    },
+    {
+        icon: PlugZap,
+        title: "MCP tool calling",
+        body: "Register MCP servers, discover tools, grant access per API key, test tools manually, and let chat completions automatically call enabled tools. Synapse records each tool input, output, routing method, latency, and error state for debugging.",
     },
     {
         icon: Activity,
@@ -71,6 +77,14 @@ const sdkHighlights = [
     "Supports non-streaming completions and OpenAI-style streaming chunks.",
     "Provides typed memory options for none, user, and API-key scoped context.",
     "Includes typed SynapseError objects with status and parsed response body.",
+];
+
+const mcpSteps = [
+    "Register an MCP server from the dashboard. For a local filesystem demo, use command npx with args -y @modelcontextprotocol/server-filesystem /tmp.",
+    "Click Discover so Synapse reads the server's tool list and stores each tool name, description, and input schema.",
+    "Grant tool access from the API-key section. Only tools enabled for the calling key can be used by chat completions.",
+    "Send a non-streaming chat request. Synapse loads the key's enabled tools, routes with deterministic, semantic embedding, or model-planner routing, executes the tool, and feeds the result back into the model.",
+    "Use the Playground or ?debug=true to inspect tool calls, routing mode, input JSON, output preview, latency, and planning prompt tokens.",
 ];
 
 export function Docs() {
@@ -272,6 +286,79 @@ if (!response.ok) {
 }
 
 const completion = await response.json();`}</code></pre>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-card/40 border-border/50">
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <PlugZap className="size-4 text-muted-foreground" />
+                            <CardTitle className="text-lg">MCP Tool Calling</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Connect external tools to Synapse and allow selected API keys to use them inside chat completions.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid gap-3">
+                            {mcpSteps.map((step, index) => (
+                                <div key={step} className="grid grid-cols-[2rem_1fr] gap-3 rounded-md border border-border/40 bg-background/30 px-3 py-3">
+                                    <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                                        {index + 1}
+                                    </div>
+                                    <p className="text-sm leading-6 text-muted-foreground">{step}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Register a filesystem MCP server</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`Name: Local filesystem
+Command: npx
+Args: -y @modelcontextprotocol/server-filesystem /tmp
+Environment JSON: {}`}</code></pre>
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Automatic tool calling request</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`curl http://localhost:3002/api/v1/chat/completions?memory=none \\
+  -H "Authorization: Bearer $SYNAPSE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "groq/llama-3.1-8b-instant",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Use your available tools to list the files in /tmp."
+      }
+    ]
+  }'`}</code></pre>
+                        </div>
+
+                        <div className="rounded-md border border-border/50 bg-background/50 p-4">
+                            <div className="mb-3 text-sm font-medium">Debug MCP routing</div>
+                            <pre className="overflow-x-auto rounded-md bg-black/40 p-4 text-xs leading-5 text-white/80"><code>{`curl "http://localhost:3002/api/v1/chat/completions?memory=none&debug=true" \\
+  -H "Authorization: Bearer $SYNAPSE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "groq/llama-3.1-8b-instant",
+    "stream": false,
+    "messages": [
+      { "role": "user", "content": "List the files in /tmp." }
+    ]
+  }'`}</code></pre>
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                                Debug responses include an _debug.mcp object with enabled tool count, executed tool calls, routing labels such as deterministic or model planner, tool input/output, errors, latency, and planning prompt token estimates.
+                            </p>
+                        </div>
+
+                        <div className="rounded-md border border-border/40 bg-background/30 p-4">
+                            <h2 className="text-sm font-semibold">Playground trace tab</h2>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                                In the Playground, MCP-looking prompts automatically request debug metadata using a non-streaming call. When a tool is used, Synapse shows a compact Chrome-style MCP trace tab that can be expanded, minimized, or closed without cluttering normal chat tests.
+                            </p>
                         </div>
                     </CardContent>
                 </Card>

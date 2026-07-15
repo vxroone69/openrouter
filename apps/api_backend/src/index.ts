@@ -336,6 +336,7 @@ const app = new Elysia()
     const memoryMode = typeof query.memory === "string" ? query.memory : "user";
     const memoryLimit = Math.min(20, Math.max(0, Number(query.memoryLimit ?? 5)));
     const memoryTokenBudget = Math.min(4000, Math.max(0, Number(query.memoryTokenBudget ?? 500)));
+    const debugRequested = query.debug === "true";
     const lastUserMessage = [...body.messages].reverse().find((message) => message.role === "user");
     const memories = await retrieveMemoryForUser(
       apiKeydb.user.id,
@@ -606,7 +607,16 @@ const app = new Elysia()
       },
     });
 
-    return response;
+    return debugRequested
+      ? {
+        ...response,
+        _debug: {
+          mcp: mcpLogDetails,
+          memory: memoryLogDetails,
+          latencyMs: elapsedMs(requestStartedAt),
+        },
+      }
+      : response;
   }, {
     body: t.Object({
       model: t.String(),
@@ -627,6 +637,7 @@ const app = new Elysia()
       ])),
       memoryLimit: t.Optional(t.String()),
       memoryTokenBudget: t.Optional(t.String()),
+      debug: t.Optional(t.String()),
     })
   })
   .listen(port);

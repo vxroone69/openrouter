@@ -16,10 +16,13 @@ import {
     CheckCircle2,
     BookmarkPlus,
     Loader2,
+    Minus,
     Play,
     Square,
     Sparkles,
     Trash2,
+    Wrench,
+    X,
 } from "lucide-react";
 
 type StreamUsage = {
@@ -34,6 +37,23 @@ type ChatMessage = {
     usage?: StreamUsage;
     isStreaming?: boolean;
     error?: string;
+};
+
+type McpToolCallTrace = {
+    toolId: number;
+    toolName: string;
+    exposedName: string;
+    routing?: string;
+    input: unknown;
+    output?: unknown;
+    error?: string;
+    latencyMs: number;
+};
+
+type McpDebugTrace = {
+    mcpToolsEnabled: number;
+    mcpToolCalls: McpToolCallTrace[];
+    mcpToolPlanningPromptTokens: number;
 };
 
 type PlaygroundModel = {
@@ -85,6 +105,16 @@ function parseSSEChunk(chunk: string) {
         .join("\n");
 }
 
+function shouldRequestMcpDebug(prompt: string) {
+    return /\b(mcp|tool|tools|list|read|directory|directories|files?|\/tmp)\b/i.test(prompt);
+}
+
+function previewJson(value: unknown) {
+    const raw = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    if (!raw) return "null";
+    return raw.length > 900 ? `${raw.slice(0, 900)}\n...` : raw;
+}
+
 export function Playground() {
     const elysiaClient = useElysiaClient();
     const [selectedModel, setSelectedModel] = useState("");
@@ -103,6 +133,8 @@ export function Playground() {
     const [memoryLimit, setMemoryLimit] = useState("5");
     const [memoryTokenBudget, setMemoryTokenBudget] = useState("500");
     const [showMemoryDebug, setShowMemoryDebug] = useState(false);
+    const [mcpTrace, setMcpTrace] = useState<McpDebugTrace | null>(null);
+    const [traceTabState, setTraceTabState] = useState<"closed" | "minimized" | "open">("closed");
     const abortRef = useRef<AbortController | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -187,6 +219,8 @@ export function Playground() {
         setSaveStatus("idle");
         setSaveError(null);
         setMemoryMode("user");
+        setMcpTrace(null);
+        setTraceTabState("closed");
         setStatus("idle");
         setIsStreaming(false);
     };
@@ -234,6 +268,8 @@ export function Playground() {
         setLastUsage(null);
         setLastLatencyMs(null);
         setLastTurnPrompt(trimmed);
+        setMcpTrace(null);
+        setTraceTabState("closed");
         setSaveStatus("idle");
         setSaveError(null);
         setStatus("streaming");
@@ -242,6 +278,7 @@ export function Playground() {
         const startedAt = performance.now();
         const controller = new AbortController();
         abortRef.current = controller;
+        const wantsMcpDebug = shouldRequestMcpDebug(trimmed);
         const flushPaint = () => new Promise<void>((resolve) => {
             window.requestAnimationFrame(() => resolve());
         });
@@ -269,6 +306,9 @@ export function Playground() {
             url.searchParams.set("memory", memoryMode);
             url.searchParams.set("memoryLimit", memoryLimit);
             url.searchParams.set("memoryTokenBudget", memoryTokenBudget);
+            if (wantsMcpDebug) {
+                url.searchParams.set("debug", "true");
+            }
 
             const response = await fetch(url.toString(), {
                 method: "POST",
@@ -278,7 +318,7 @@ export function Playground() {
                 },
                 body: JSON.stringify({
                     model: selectedModel,
-                    stream: true,
+                    stream: !wantsMcpDebug,
                     messages: conversation,
                 }),
                 signal: controller.signal,
@@ -294,6 +334,50 @@ export function Playground() {
                     // Keep raw body text.
                 }
                 throw new Error(message || "Failed to start stream");
+            }
+
+            if (wantsMcpDebug) {
+                const payload = await response.json() as {
+                    completions?: {
+                        choices?: Array<{
+                            message?: {
+                                content?: string;
+                            };
+                        }>;
+                    };
+                    inputTokensConsumed?: number;
+                    outputTokensConsumed?: number;
+                    _debug?: {
+                        mcp?: McpDebugTrace;
+                    };
+                };
+                output = payload.completions?.choices?.map((choice) => choice.message?.content ?? "").join("\n") ?? "";
+                await renderDelta(output);
+
+                const usage: StreamUsage = {
+                    inputTokensConsumed: payload.inputTokensConsumed ?? 0,
+                    outputTokensConsumed: payload.outputTokensConsumed ?? 0,
+                };
+                const debugTrace = payload._debug?.mcp ?? null;
+
+                setMessages((current) =>
+                    current.map((message) =>
+                        message.id === assistantId
+                            ? {
+                                  ...message,
+                                  content: output,
+                                  isStreaming: false,
+                                  usage,
+                              }
+                            : message
+                    )
+                );
+                setLastUsage(usage);
+                setLastLatencyMs(Math.round(performance.now() - startedAt));
+                setMcpTrace(debugTrace);
+                setTraceTabState(debugTrace && debugTrace.mcpToolCalls.length > 0 ? "open" : "closed");
+                setStatus("done");
+                return;
             }
 
             const reader = response.body?.getReader();
@@ -780,6 +864,125 @@ export function Playground() {
                             </div>
                         )}
                     </div>
+
+                    {mcpTrace && traceTabState !== "closed" && (
+                        <div className="border-t border-border/50 bg-black/10 px-4 pt-3 sm:px-5">
+                            {traceTabState === "minimized" ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setTraceTabState("open")}
+                                    className="mb-3 inline-flex h-9 items-center gap-2 rounded-t-lg border border-b-0 border-border/60 bg-card/80 px-3 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+                                >
+                                    <Wrench className="size-3.5" />
+                                    MCP trace
+                                    <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">
+                                        {mcpTrace.mcpToolCalls.length}
+                                    </span>
+                                </button>
+                            ) : (
+                                <div className="mb-3 overflow-hidden rounded-lg border border-border/60 bg-card/80">
+                                    <div className="flex items-center justify-between border-b border-border/50 bg-black/20">
+                                        <button
+                                            type="button"
+                                            onClick={() => setTraceTabState("minimized")}
+                                            className="flex h-10 min-w-0 items-center gap-2 rounded-t-lg border-r border-border/50 bg-background/60 px-3 text-left text-xs font-medium"
+                                        >
+                                            <Wrench className="size-3.5 text-muted-foreground" />
+                                            <span className="truncate">MCP trace</span>
+                                            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                {mcpTrace.mcpToolCalls.length}
+                                            </span>
+                                        </button>
+                                        <div className="flex items-center gap-1 px-2">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                className="size-7 text-muted-foreground"
+                                                onClick={() => setTraceTabState("minimized")}
+                                                aria-label="Minimize MCP trace"
+                                            >
+                                                <Minus className="size-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                className="size-7 text-muted-foreground"
+                                                onClick={() => setTraceTabState("closed")}
+                                                aria-label="Close MCP trace"
+                                            >
+                                                <X className="size-3.5" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-3 p-3 text-xs lg:grid-cols-[220px_minmax(0,1fr)]">
+                                        <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+                                            <div className="rounded-md border border-border/50 bg-black/20 p-2">
+                                                <p className="text-muted-foreground">Tools enabled</p>
+                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolsEnabled}</p>
+                                            </div>
+                                            <div className="rounded-md border border-border/50 bg-black/20 p-2">
+                                                <p className="text-muted-foreground">Calls</p>
+                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolCalls.length}</p>
+                                            </div>
+                                            <div className="rounded-md border border-border/50 bg-black/20 p-2">
+                                                <p className="text-muted-foreground">Planning tokens</p>
+                                                <p className="mt-1 font-medium">{mcpTrace.mcpToolPlanningPromptTokens}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            {mcpTrace.mcpToolCalls.map((call, index) => (
+                                                <div key={`${call.toolId}-${index}`} className="rounded-md border border-border/50 bg-black/20 p-3">
+                                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div className="min-w-0">
+                                                            <p className="truncate font-medium">{call.toolName}</p>
+                                                            <p className="truncate font-mono text-[11px] text-muted-foreground">{call.exposedName}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                                            <span>{call.latencyMs} ms</span>
+                                                            <span className={call.error ? "text-destructive" : "text-emerald-400"}>
+                                                                {call.error ? "error" : "success"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {call.routing && (
+                                                        <p className="mt-2 rounded border border-border/50 bg-background/40 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                                                            {call.routing}
+                                                        </p>
+                                                    )}
+
+                                                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                                                        <div>
+                                                            <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Input</p>
+                                                            <pre className="max-h-44 overflow-auto rounded-md border border-border/50 bg-black/30 p-2 font-mono text-[11px] leading-5 text-white/80">
+{previewJson(call.input)}
+                                                            </pre>
+                                                        </div>
+                                                        <div>
+                                                            <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                                                                {call.error ? "Error" : "Output"}
+                                                            </p>
+                                                            <pre className={`max-h-44 overflow-auto rounded-md border p-2 font-mono text-[11px] leading-5 ${
+                                                                call.error
+                                                                    ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                                                    : "border-border/50 bg-black/30 text-white/80"
+                                                            }`}>
+{call.error ?? previewJson(call.output)}
+                                                            </pre>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="border-t border-border/50 p-4 sm:p-5">
                         <form

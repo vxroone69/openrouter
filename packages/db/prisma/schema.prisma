@@ -213,6 +213,7 @@ model McpTool {
   name        String
   description String?
   inputSchema Json?
+  embedding   Unsupported("vector")?
   enabled     Boolean         @default(true)
   lastSeenAt  DateTime        @default(now())
   createdAt   DateTime        @default(now())

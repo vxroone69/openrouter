@@ -1,0 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE "McpTool"
+ADD COLUMN IF NOT EXISTS "embedding" vector(3072);

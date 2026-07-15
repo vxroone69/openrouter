@@ -2,6 +2,7 @@ import { prisma } from "db";
 import { McpStdioClient } from "./stdioClient";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { generateMemoryEmbedding, toPgVector } from "../memory/embedding";
 
 type CreateServerInput = {
     name: string;
@@ -130,6 +131,35 @@ function textContent(text: string) {
             },
         ],
     };
+}
+
+function buildToolEmbeddingText(input: {
+    serverName: string;
+    toolName: string;
+    description: string | null;
+    inputSchema: unknown;
+}) {
+    return [
+        `MCP server: ${input.serverName}`,
+        `Tool: ${input.toolName}`,
+        `Description: ${input.description ?? "No description"}`,
+        `Input schema: ${JSON.stringify(input.inputSchema ?? {})}`,
+    ].join("\n");
+}
+
+async function refreshToolEmbedding(toolId: number, text: string) {
+    try {
+        const embedding = await generateMemoryEmbedding(text);
+        if (!embedding) return;
+
+        await prisma.$executeRawUnsafe(`
+            UPDATE "McpTool"
+            SET "embedding" = '${toPgVector(embedding)}'::vector
+            WHERE "id" = ${toolId}
+        `);
+    } catch (error) {
+        console.error("Failed to persist MCP tool embedding:", error);
+    }
 }
 
 async function directoryTree(dir: string): Promise<{ name: string; type: "file" | "directory"; children?: unknown[] }> {
@@ -321,7 +351,7 @@ export class McpService {
             env: parseJsonEnv(server.env),
         });
 
-        await prisma.$transaction([
+        const savedTools = await prisma.$transaction([
             ...tools.map((tool) =>
                 prisma.mcpTool.upsert({
                     where: {
@@ -349,6 +379,24 @@ export class McpService {
                 data: { lastDiscoveredAt: new Date() },
             }),
         ]);
+
+        void Promise.all(
+            savedTools
+                .filter((tool): tool is typeof tool & { id: number; name: string; serverId: number; description: string | null; inputSchema: unknown } => "serverId" in tool)
+                .map((tool) =>
+                    refreshToolEmbedding(
+                        tool.id,
+                        buildToolEmbeddingText({
+                            serverName: server.name,
+                            toolName: tool.name,
+                            description: tool.description,
+                            inputSchema: tool.inputSchema,
+                        })
+                    )
+                )
+        ).catch((error) => {
+            console.error("Failed to refresh MCP tool embeddings:", error);
+        });
 
         const refreshed = await prisma.mcpServer.findFirstOrThrow({
             where: {
